@@ -1,0 +1,2949 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StatAI 统计与数据洞察工作台 · v2.0 AI 智能诊断版</title>
+
+  <!-- 字体与样式框架：Inter + 中文字体栈，Tailwind CSS CDN，Chart.js 4 CDN -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '"PingFang SC"', '"Microsoft YaHei"', '"Helvetica Neue"', 'Arial', 'sans-serif']
+          },
+          colors: {
+            brand: {
+              dark: '#1E3A8A',
+              DEFAULT: '#2563EB',
+              light: '#EFF6FF'
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    /* ==========================================================================
+       定制样式：学术三线表、环形进度动画、平滑滚动与表格固定表头
+       ========================================================================== */
+    body {
+      background-color: #F8FAFC;
+      color: #0F172A;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* 学术规范三线表 */
+    .three-line-table {
+      width: 100%;
+      border-collapse: collapse;
+      border-top: 2px solid #0F172A;
+      border-bottom: 2px solid #0F172A;
+      font-variant-numeric: tabular-nums;
+    }
+    .three-line-table thead th {
+      padding: 10px 12px;
+      font-weight: 600;
+      font-size: 12.5px;
+      color: #0F172A;
+      background-color: #FFFFFF;
+      border-bottom: 1px solid #334155;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .three-line-table thead th:first-child,
+    .three-line-table tbody td:first-child {
+      text-align: left;
+      font-weight: 600;
+      color: #1E293B;
+    }
+    .three-line-table tbody td {
+      padding: 9px 12px;
+      font-size: 13px;
+      color: #334155;
+      text-align: right;
+      white-space: nowrap;
+      border-bottom: 1px solid #F1F5F9;
+    }
+    .three-line-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+    .three-line-table tbody tr:hover {
+      background-color: #F8FAFC;
+    }
+
+    /* 环形健康度仪表盘过渡 */
+    .gauge-ring {
+      transition: stroke-dashoffset 0.75s cubic-bezier(0.22, 1, 0.36, 1), stroke 0.4s ease;
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
+    }
+
+    /* 细滚动条美化 */
+    .thin-scroll::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .thin-scroll::-webkit-scrollbar-track {
+      background: #F1F5F9;
+      border-radius: 999px;
+    }
+    .thin-scroll::-webkit-scrollbar-thumb {
+      background: #CBD5E1;
+      border-radius: 999px;
+    }
+    .thin-scroll::-webkit-scrollbar-thumb:hover {
+      background: #94A3B8;
+    }
+
+    /* 问答消息 Markdown 基础排版 */
+    .chat-prose p { margin-bottom: 0.5rem; }
+    .chat-prose p:last-child { margin-bottom: 0; }
+    .chat-prose ul, .chat-prose ol { margin: 0.35rem 0 0.5rem 1.25rem; }
+    .chat-prose ul { list-style-type: disc; }
+    .chat-prose ol { list-style-type: decimal; }
+    .chat-prose li { margin-bottom: 0.25rem; }
+    .chat-prose strong { color: #0F172A; font-weight: 600; }
+
+    /* Toast 入场动画 */
+    @keyframes slideInToast {
+      from { opacity: 0; transform: translateY(-10px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .toast-enter {
+      animation: slideInToast 0.25s ease-out forwards;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- 全局非阻塞 Toast 消息通知容器（严禁使用原生 alert/confirm） -->
+  <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-3 sm:px-0"></div>
+
+  <!-- ========================================================================
+       顶部导航栏
+       ======================================================================== -->
+  <header class="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
+      <!-- 左侧品牌标识与版本徽章 -->
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-[#1E3A8A] to-[#2563EB] flex items-center justify-center shadow-sm shrink-0">
+          <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex flex-wrap items-center gap-2">
+            <h1 class="text-base sm:text-lg font-bold text-slate-900 tracking-tight">StatAI 统计与数据洞察工作台</h1>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-[#1E3A8A] border border-blue-200">
+              v2.0 · AI 智能诊断版
+            </span>
+          </div>
+          <p class="text-xs text-slate-500 hidden sm:block">纯前端浏览器本地运算 · 统计诊断 × 商业决策 × 学术解读</p>
+        </div>
+      </div>
+
+      <!-- 右侧全局操作按钮 -->
+      <div class="flex items-center gap-2 sm:gap-2.5">
+        <button id="openApiModalBtn" type="button"
+          class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 hover:border-slate-400 transition">
+          <span id="apiStatusDot" class="w-2 h-2 rounded-full bg-slate-300"></span>
+          <span>大模型 API 配置</span>
+          <span class="hidden md:inline text-xs text-slate-400">(可选)</span>
+        </button>
+
+        <button id="exportMdBtn" type="button"
+          class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium text-white bg-[#1E3A8A] hover:bg-[#1E40AF] shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          <span>导出诊断报告 (.md)</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========================================================================
+       主工作区容器
+       ======================================================================== -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- 模块 1：数据导入与内置示例区 -->
+    <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div class="flex-1">
+          <div class="flex flex-wrap items-center gap-2 mb-1">
+            <h2 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <span class="w-1 h-4 rounded-full bg-[#2563EB]"></span>
+              数据源管理与快速导入
+            </h2>
+            <span id="datasetMetaBadge" class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-600">
+              等待加载数据...
+            </span>
+            <span id="cleanedStatusBadge" class="hidden inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+              已完成智能清洗
+            </span>
+          </div>
+          <p class="text-xs text-slate-500">支持拖拽或上传本地 CSV（自动兼容 UTF-8 / GBK 编码与双引号转义）；所有计算均在本地完成，保障数据隐私。</p>
+        </div>
+
+        <!-- 快捷按钮组 -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button id="loadSampleBtn" type="button"
+            class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium text-white bg-[#2563EB] hover:bg-blue-700 shadow-sm transition">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+            </svg>
+            一键加载电商用户消费示例数据 (50条)
+          </button>
+
+          <button id="selectFileBtn" type="button"
+            class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition">
+            <svg class="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            上传本地 CSV
+          </button>
+
+          <button id="restoreRawBtn" type="button"
+            class="hidden inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition">
+            恢复清洗前数据
+          </button>
+
+          <button id="clearDataBtn" type="button"
+            class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition">
+            清空
+          </button>
+        </div>
+      </div>
+
+      <!-- 拖拽上传区 -->
+      <div id="dropzone" tabindex="0" role="button" aria-label="拖拽或点击上传 CSV 文件"
+        class="mt-4 border border-dashed border-slate-300 rounded-lg bg-slate-50/70 hover:bg-blue-50/50 hover:border-blue-400 transition px-4 py-3.5 flex flex-col sm:flex-row items-center justify-center gap-2 text-center cursor-pointer">
+        <svg class="w-5 h-5 text-blue-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <span class="text-xs sm:text-sm text-slate-600">
+          将本地 <strong class="text-slate-800">.csv</strong> 文件拖拽至此处，或 <span class="text-[#2563EB] font-medium underline underline-offset-2">点击浏览选择</span>（自动识别数值列与分类列）
+        </span>
+        <input id="csvFileInput" type="file" accept=".csv,text/csv" class="hidden" />
+      </div>
+    </section>
+
+    <!-- 空状态引导（当用户手动点击清空后展示） -->
+    <section id="emptyState" class="hidden bg-white rounded-xl border border-slate-200 shadow-sm p-12 text-center">
+      <div class="w-14 h-14 mx-auto rounded-2xl bg-blue-50 text-[#2563EB] flex items-center justify-center mb-4">
+        <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      </div>
+      <h3 class="text-base font-bold text-slate-800 mb-1">当前工作台暂无数据</h3>
+      <p class="text-sm text-slate-500 max-w-md mx-auto mb-5">上传任意结构化 CSV 数据集，或一键加载内置 50 条电商用户消费样本，即刻启动 AI 智能统计诊断与业务洞察。</p>
+      <button id="emptyLoadSampleBtn" type="button"
+        class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-[#2563EB] hover:bg-blue-700 shadow-sm transition">
+        立即加载示例数据体验
+      </button>
+    </section>
+
+    <!-- ======================================================================
+         分析主视图（有数据时显示）
+         ====================================================================== -->
+    <div id="workspaceContent" class="space-y-6">
+
+      <!-- 清洗前后动态对比提示条（执行一键清洗后展示） -->
+      <div id="cleaningDiffBanner" class="hidden bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-3.5 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-start sm:items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div>
+            <div class="text-sm font-bold text-emerald-900">智能清洗已生效 · 实时对比（清洗前 vs 清洗后）</div>
+            <div id="cleaningDiffText" class="text-xs text-emerald-800 mt-0.5"></div>
+          </div>
+        </div>
+        <button id="bannerRestoreBtn" type="button" class="text-xs font-semibold text-emerald-800 underline underline-offset-2 hover:text-emerald-950">
+          撤回清洗查看原始状态
+        </button>
+      </div>
+
+      <!-- ====================================================================
+           模块 2：AI 智能诊断中心（健康度仪表盘 + 诊断问题清单）
+           ==================================================================== -->
+      <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- 左侧 4 列：数据健康度综合仪表盘 -->
+        <div class="lg:col-span-4 bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <span class="w-1 h-4 rounded-full bg-[#1E3A8A]"></span>
+                数据健康度综合仪表盘
+              </h2>
+              <span id="healthGradeBadge" class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">评估中</span>
+            </div>
+
+            <!-- SVG 环形评分仪表盘 -->
+            <div class="flex flex-col items-center justify-center my-3">
+              <div class="relative w-40 h-40">
+                <svg class="w-full h-full" viewBox="0 0 120 120">
+                  <circle cx="60" cy="60" r="50" fill="none" stroke="#E2E8F0" stroke-width="10"></circle>
+                  <circle id="healthGaugeCircle" class="gauge-ring" cx="60" cy="60" r="50" fill="none"
+                    stroke="#2563EB" stroke-width="10" stroke-linecap="round"
+                    stroke-dasharray="314.16" stroke-dashoffset="314.16"></circle>
+                </svg>
+                <div class="absolute inset-0 flex flex-col items-center justify-center">
+                  <span class="text-xs text-slate-400 font-medium">综合健康分</span>
+                  <div class="flex items-baseline gap-0.5">
+                    <span id="healthScoreNum" class="text-4xl font-bold text-slate-900 tabular-nums">0</span>
+                    <span class="text-xs text-slate-400">/100</span>
+                  </div>
+                  <span id="healthDeltaBadge" class="hidden mt-0.5 text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded"></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 四个子维度进度条 -->
+            <div class="space-y-3.5 mt-4">
+              <div>
+                <div class="flex justify-between text-xs mb-1">
+                  <span class="font-medium text-slate-700">完整性 <span class="text-slate-400 font-normal">(缺失率)</span></span>
+                  <span id="dimCompletenessVal" class="font-semibold text-slate-900 tabular-nums">0分</span>
+                </div>
+                <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div id="dimCompletenessBar" class="h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+                <p id="dimCompletenessDesc" class="text-[11px] text-slate-400 mt-0.5"></p>
+              </div>
+
+              <div>
+                <div class="flex justify-between text-xs mb-1">
+                  <span class="font-medium text-slate-700">稳健性 <span class="text-slate-400 font-normal">(IQR 异常比例)</span></span>
+                  <span id="dimRobustnessVal" class="font-semibold text-slate-900 tabular-nums">0分</span>
+                </div>
+                <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div id="dimRobustnessBar" class="h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+                <p id="dimRobustnessDesc" class="text-[11px] text-slate-400 mt-0.5"></p>
+              </div>
+
+              <div>
+                <div class="flex justify-between text-xs mb-1">
+                  <span class="font-medium text-slate-700">分布均衡度 <span class="text-slate-400 font-normal">(平均偏度)</span></span>
+                  <span id="dimBalanceVal" class="font-semibold text-slate-900 tabular-nums">0分</span>
+                </div>
+                <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div id="dimBalanceBar" class="h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+                <p id="dimBalanceDesc" class="text-[11px] text-slate-400 mt-0.5"></p>
+              </div>
+
+              <div>
+                <div class="flex justify-between text-xs mb-1">
+                  <span class="font-medium text-slate-700">信息关联度 <span class="text-slate-400 font-normal">(显著相关占比)</span></span>
+                  <span id="dimCorrelationVal" class="font-semibold text-slate-900 tabular-nums">0分</span>
+                </div>
+                <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div id="dimCorrelationBar" class="h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+                <p id="dimCorrelationDesc" class="text-[11px] text-slate-400 mt-0.5"></p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 底部快速 KPI 汇总 -->
+          <div class="mt-5 pt-4 border-t border-slate-100 grid grid-cols-4 gap-2 text-center">
+            <div class="bg-slate-50 rounded-lg p-2">
+              <div class="text-[11px] text-slate-500">样本行</div>
+              <div id="kpiRows" class="text-sm font-bold text-slate-900 tabular-nums">0</div>
+            </div>
+            <div class="bg-slate-50 rounded-lg p-2">
+              <div class="text-[11px] text-slate-500">数值列</div>
+              <div id="kpiNumCols" class="text-sm font-bold text-slate-900 tabular-nums">0</div>
+            </div>
+            <div class="bg-slate-50 rounded-lg p-2">
+              <div class="text-[11px] text-slate-500">缺失值</div>
+              <div id="kpiMissing" class="text-sm font-bold text-slate-900 tabular-nums">0</div>
+            </div>
+            <div class="bg-slate-50 rounded-lg p-2">
+              <div class="text-[11px] text-slate-500">IQR异常</div>
+              <div id="kpiOutliers" class="text-sm font-bold text-slate-900 tabular-nums">0</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧 8 列：AI 智能诊断问题清单 -->
+        <div class="lg:col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-100">
+            <div>
+              <h2 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <span class="w-1 h-4 rounded-full bg-[#2563EB]"></span>
+                AI 智能诊断中心 · 实时体检报告
+              </h2>
+              <p class="text-xs text-slate-500 mt-0.5">基于当前数据集实时执行缺失检测、IQR 离群扫描、偏度离散评估与全量相关性挖掘</p>
+            </div>
+            <div id="diagSummaryCounts" class="flex items-center gap-1.5 text-xs"></div>
+          </div>
+
+          <!-- 4 个诊断卡片动态容器 -->
+          <div id="diagnosticList" class="space-y-3.5 flex-1"></div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           模块 3：AI 业务洞察与交互式问答引擎
+           ==================================================================== -->
+      <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- 左侧 7 列：双视角自动报告面板 -->
+        <div class="lg:col-span-7 bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
+            <!-- 视角切换 Tabs -->
+            <div class="inline-flex p-1 rounded-lg bg-slate-100 border border-slate-200" role="tablist">
+              <button id="tabBusiness" type="button" role="tab" aria-selected="true"
+                class="px-3.5 py-1.5 rounded-md text-xs sm:text-sm font-semibold transition bg-white text-[#1E3A8A] shadow-sm">
+                商业决策洞察
+              </button>
+              <button id="tabAcademic" type="button" role="tab" aria-selected="false"
+                class="px-3.5 py-1.5 rounded-md text-xs sm:text-sm font-medium transition text-slate-600 hover:text-slate-900">
+                学术统计解读
+              </button>
+            </div>
+
+            <button id="copyInsightBtn" type="button"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 hover:bg-blue-50 hover:text-[#2563EB] hover:border-blue-200 transition">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              一键复制洞察文本
+            </button>
+          </div>
+
+          <!-- 商业视角面板 -->
+          <div id="businessInsightPanel" class="space-y-4 text-sm text-slate-700 flex-1"></div>
+
+          <!-- 学术视角面板 -->
+          <div id="academicInsightPanel" class="hidden space-y-4 text-sm text-slate-700 flex-1"></div>
+        </div>
+
+        <!-- 右侧 5 列：交互式 AI 数据问答框 -->
+        <div class="lg:col-span-5 bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col h-[640px] lg:h-auto lg:min-h-[600px]">
+          <div class="flex items-center justify-between gap-2 mb-3 pb-3 border-b border-slate-100">
+            <div>
+              <h2 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <span class="w-1 h-4 rounded-full bg-[#2563EB]"></span>
+                交互式 AI 数据问答
+              </h2>
+              <div id="qaEngineBadge" class="inline-flex items-center gap-1.5 mt-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                内置智能统计推理引擎（离线可用）
+              </div>
+            </div>
+            <button id="clearChatBtn" type="button" class="text-xs text-slate-400 hover:text-slate-600 transition px-2 py-1 rounded hover:bg-slate-100">
+              清空对话
+            </button>
+          </div>
+
+          <!-- 聊天记录滚动区 -->
+          <div id="chatMessages" class="flex-1 overflow-y-auto thin-scroll space-y-3 pr-1 mb-3"></div>
+
+          <!-- 4 个一键快捷提问胶囊 -->
+          <div class="mb-3">
+            <div class="text-[11px] font-medium text-slate-400 mb-1.5">快捷洞察提问：</div>
+            <div class="flex flex-wrap gap-1.5" id="quickQuestions">
+              <button type="button" data-q="哪些指标最影响核心消费/目标变量？"
+                class="quick-q-btn text-left text-xs px-2.5 py-1.5 rounded-full bg-blue-50/80 text-[#1E3A8A] border border-blue-200/80 hover:bg-blue-100 transition">
+                哪些指标最影响核心消费/目标变量？
+              </button>
+              <button type="button" data-q="数据里的异常值该删还是留？"
+                class="quick-q-btn text-left text-xs px-2.5 py-1.5 rounded-full bg-blue-50/80 text-[#1E3A8A] border border-blue-200/80 hover:bg-blue-100 transition">
+                数据里的异常值该删还是留？
+              </button>
+              <button type="button" data-q="生成一段可直接放进汇报 PPT 的总结"
+                class="quick-q-btn text-left text-xs px-2.5 py-1.5 rounded-full bg-blue-50/80 text-[#1E3A8A] border border-blue-200/80 hover:bg-blue-100 transition">
+                生成一段可直接放进汇报 PPT 的总结
+              </button>
+              <button type="button" data-q="给出 3 条针对性的业务优化建议"
+                class="quick-q-btn text-left text-xs px-2.5 py-1.5 rounded-full bg-blue-50/80 text-[#1E3A8A] border border-blue-200/80 hover:bg-blue-100 transition">
+                给出 3 条针对性的业务优化建议
+              </button>
+            </div>
+          </div>
+
+          <!-- 输入表单 -->
+          <form id="chatForm" class="flex items-center gap-2 pt-2 border-t border-slate-100">
+            <input id="chatInput" type="text" placeholder="输入关于当前数据的问题，如：各城市等级消费有何差异？"
+              class="flex-1 text-xs sm:text-sm px-3.5 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-[#2563EB] bg-slate-50 focus:bg-white transition" />
+            <button id="chatSendBtn" type="submit"
+              class="px-4 py-2.5 rounded-lg text-xs sm:text-sm font-medium text-white bg-[#2563EB] hover:bg-blue-700 transition shrink-0 disabled:opacity-50">
+              发送
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           模块 4：双图表联动可视化区（直方图 + 散点回归拟合图）
+           ==================================================================== -->
+      <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- 左侧图表：单变量分布直方图（含均值参考线与分布特征标签） -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div>
+              <h2 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <span class="w-1 h-4 rounded-full bg-[#2563EB]"></span>
+                单变量分布直方图
+              </h2>
+              <p class="text-xs text-slate-500 mt-0.5">展示频数分布、均值参考线与偏态特征</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <label for="histVarSelect" class="text-xs font-medium text-slate-600">变量：</label>
+              <select id="histVarSelect"
+                class="text-xs sm:text-sm px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 focus:outline-none focus:border-[#2563EB]"></select>
+            </div>
+          </div>
+
+          <!-- 分布特征标签条 -->
+          <div id="histBadges" class="flex flex-wrap items-center gap-2 mb-3 text-xs"></div>
+
+          <div id="histEmptyMsg" class="hidden flex-1 flex items-center justify-center text-xs text-slate-400 py-16">
+            当前数据集缺少数值型变量，无法绘制分布直方图。
+          </div>
+          <div id="histChartWrap" class="relative w-full h-72">
+            <canvas id="histogramCanvas"></canvas>
+          </div>
+        </div>
+
+        <!-- 右侧图表：双变量相关性散点图 + OLS 线性拟合趋势线 -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div>
+              <h2 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <span class="w-1 h-4 rounded-full bg-[#1E3A8A]"></span>
+                双变量相关性散点图与 OLS 回归拟合
+              </h2>
+              <p class="text-xs text-slate-500 mt-0.5">默认锁定相关性最强的变量对，琥珀点代表异常样本</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <label for="scatterXSelect" class="text-xs font-medium text-slate-600">X:</label>
+              <select id="scatterXSelect"
+                class="text-xs px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 focus:outline-none focus:border-[#2563EB] max-w-[130px]"></select>
+              <label for="scatterYSelect" class="text-xs font-medium text-slate-600 ml-1">Y:</label>
+              <select id="scatterYSelect"
+                class="text-xs px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 focus:outline-none focus:border-[#2563EB] max-w-[130px]"></select>
+            </div>
+          </div>
+
+          <!-- 实时回归统计指标条 -->
+          <div id="scatterStatsBar" class="flex flex-wrap items-center gap-2 mb-3 text-xs"></div>
+
+          <div id="scatterEmptyMsg" class="hidden flex-1 flex items-center justify-center text-xs text-slate-400 py-16">
+            至少需要 2 个数值型变量以执行双变量相关性分析与线性拟合。
+          </div>
+          <div id="scatterChartWrap" class="relative w-full h-72">
+            <canvas id="scatterCanvas"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           模块 5：规范学术三线表（描述性统计）
+           ==================================================================== -->
+      <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <div>
+            <h2 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <span class="w-1 h-4 rounded-full bg-[#1E3A8A]"></span>
+              表 1：数值型变量描述性统计三线表
+            </h2>
+            <p class="text-xs text-slate-500 mt-0.5">严格遵循学术论文三线表规范，实时包含偏度、变异系数 (CV) 及 1.5×IQR 异常值计数</p>
+          </div>
+          <span class="text-xs text-slate-400">保留 2 位小数 · 样本标准差 (N-1)</span>
+        </div>
+
+        <div id="statsTableEmpty" class="hidden text-center py-8 text-xs text-slate-400">
+          未检测到可进行定量统计的数值型变量。
+        </div>
+
+        <div id="statsTableContainer" class="overflow-x-auto thin-scroll">
+          <table class="three-line-table" id="descriptiveTable">
+            <thead>
+              <tr>
+                <th>变量名</th>
+                <th>有效 N</th>
+                <th>缺失数</th>
+                <th>均值 (Mean)</th>
+                <th>标准差 (SD)</th>
+                <th>中位数 (Median)</th>
+                <th>最小值 (Min)</th>
+                <th>最大值 (Max)</th>
+                <th>偏度 (Skew)</th>
+                <th>变异系数 (CV)</th>
+                <th>异常值数</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="mt-2.5 text-[11.5px] text-slate-500">
+          注：偏度采用无偏样本偏度公式（Fisher-Pearson G1）；变异系数 CV = SD / |Mean|；异常值按 Tukey 1.5×IQR 规则判定（&lt; Q1−1.5IQR 或 &gt; Q3+1.5IQR）。
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           模块 6：数据预览区（缺失/异常高亮、筛选与折叠）
+           ==================================================================== -->
+      <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div>
+            <h2 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <span class="w-1 h-4 rounded-full bg-[#2563EB]"></span>
+              原始与清洗数据明细预览
+            </h2>
+            <p class="text-xs text-slate-500 mt-0.5">
+              <span class="inline-block w-2.5 h-2.5 rounded-sm bg-red-100 border border-red-300 align-middle mr-1"></span>浅红：缺失值
+              <span class="inline-block w-2.5 h-2.5 rounded-sm bg-amber-100 border border-amber-300 align-middle ml-3 mr-1"></span>浅琥珀：IQR 异常值
+              <span class="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-100 border border-emerald-300 align-middle ml-3 mr-1"></span>浅绿：智能填补值
+            </p>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- 行筛选按钮组 -->
+            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs" id="previewFilterGroup">
+              <button type="button" data-filter="all" class="preview-filter-btn px-2.5 py-1 rounded-md font-semibold bg-white text-[#1E3A8A] shadow-sm">
+                全部 (<span id="filterCountAll">0</span>)
+              </button>
+              <button type="button" data-filter="issue" class="preview-filter-btn px-2.5 py-1 rounded-md font-medium text-slate-600 hover:text-slate-900">
+                仅看异常/缺失 (<span id="filterCountIssue">0</span>)
+              </button>
+              <button type="button" data-filter="missing" class="preview-filter-btn px-2.5 py-1 rounded-md font-medium text-slate-600 hover:text-slate-900">
+                仅缺失 (<span id="filterCountMissing">0</span>)
+              </button>
+              <button type="button" data-filter="outlier" class="preview-filter-btn px-2.5 py-1 rounded-md font-medium text-slate-600 hover:text-slate-900">
+                仅异常 (<span id="filterCountOutlier">0</span>)
+              </button>
+            </div>
+
+            <button id="togglePreviewBtn" type="button"
+              class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 border border-slate-200 hover:bg-slate-50 transition">
+              <span id="togglePreviewLabel">收起表格</span>
+              <svg id="togglePreviewIcon" class="w-3.5 h-3.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div id="previewTableWrapper" class="overflow-auto max-h-96 border border-slate-200 rounded-lg thin-scroll">
+          <table id="dataPreviewTable" class="w-full text-left border-collapse text-xs sm:text-[13px] whitespace-nowrap">
+            <thead class="sticky top-0 z-10 bg-slate-50 border-b border-slate-200 text-slate-700 font-semibold"></thead>
+            <tbody class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- 页脚 -->
+  <footer class="border-t border-slate-200 bg-white mt-8 py-4 px-4 text-center text-xs text-slate-500">
+    StatAI 轻量统计与数据洞察工作台 · v2.0 AI 智能诊断版 ｜ 纯前端单文件架构（支持 GitHub Pages 零配置静态托管）
+  </footer>
+
+  <!-- ========================================================================
+       大模型 API 可选配置弹窗
+       ======================================================================== -->
+  <div id="apiModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-md w-full p-6">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-base font-bold text-slate-900">自定义大模型 API 配置（可选）</h3>
+        <button id="closeApiModalBtn" type="button" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <p class="text-xs text-slate-500 leading-relaxed mb-4">
+        不配置时默认使用内置「智能统计推理引擎」离线实时作答。如配置 OpenAI / DeepSeek 兼容接口，问答引擎将自动携带当前数据集的统计摘要 JSON 调用真实大模型深度分析；若网络或接口异常会自动降级回内置引擎。
+      </p>
+
+      <div class="space-y-3.5">
+        <div>
+          <label for="apiBaseUrl" class="block text-xs font-semibold text-slate-700 mb-1">API Base URL</label>
+          <input id="apiBaseUrl" type="url" placeholder="https://api.deepseek.com/v1"
+            class="w-full text-sm px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-500/20" />
+          <p class="text-[11px] text-slate-400 mt-1">例如：https://api.deepseek.com/v1 或 https://api.openai.com/v1</p>
+        </div>
+
+        <div>
+          <label for="apiModelName" class="block text-xs font-semibold text-slate-700 mb-1">模型名称 (Model)</label>
+          <input id="apiModelName" type="text" placeholder="deepseek-chat"
+            class="w-full text-sm px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-500/20" />
+        </div>
+
+        <div>
+          <label for="apiKeyInput" class="block text-xs font-semibold text-slate-700 mb-1">API Key</label>
+          <input id="apiKeyInput" type="password" placeholder="sk-..."
+            class="w-full text-sm px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-500/20" />
+          <p class="text-[11px] text-slate-400 mt-1">密钥仅保存在当前浏览器本地存储，不向任何第三方中转服务器发送。</p>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-2 mt-6 pt-4 border-t border-slate-100">
+        <button id="clearApiConfigBtn" type="button"
+          class="px-3 py-2 rounded-lg text-xs font-medium text-red-600 hover:bg-red-50 transition">
+          清除配置（恢复内置引擎）
+        </button>
+        <div class="flex items-center gap-2">
+          <button id="cancelApiModalBtn" type="button"
+            class="px-3.5 py-2 rounded-lg text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition">
+            取消
+          </button>
+          <button id="saveApiConfigBtn" type="button"
+            class="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-[#2563EB] hover:bg-blue-700 transition">
+            保存并启用
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       核心脚本：统计计算引擎、AI 智能诊断、双视角洞察、双引擎问答与图表联动
+       ======================================================================== -->
+  <script>
+    (function () {
+      "use strict";
+
+      /* ======================================================================
+         1. 内置电商用户消费示例数据集（50条真实结构样本）
+            设计说明（便于课程答辩演示 AI 诊断的真实检出能力）：
+            - 2 处刻意缺失值：
+              * 第 6 条 (U006)「年龄」缺失（年龄因含高龄样本呈右偏 |Skew|>=0.5 -> AI推荐中位数填补）
+              * 第 14 条 (U014)「月访问频次」缺失（分布近似对称 |Skew|<0.5 -> AI推荐均值填补）
+            - 3 处典型异常值（IQR 1.5倍规则可精准捕获）：
+              * 第 19 条 (U019)：黑卡超级 VIP，客单价 1860 元，月消费 14200 元
+              * 第 37 条 (U037)：企业采购超级用户，客单价 1580 元，月消费 11800 元
+              * 第 44 条 (U044)：银发高龄忠实用户，年龄 76 岁
+            - 显著相关性设计：
+              * 月访问频次、会员时长(月)、客单价(元) 与 月消费金额(元) 呈显著正相关
+         ====================================================================== */
+      const SAMPLE_CSV = [
+        "用户ID,性别,城市等级,年龄,会员时长(月),月访问频次,客单价(元),月消费金额(元),满意度评分",
+        "U001,女,一线城市,26,14,18,240,1620,4.3",
+        "U002,男,新一线,32,24,23,380,2890,4.6",
+        "U003,女,二线城市,29,18,19,290,2140,4.4",
+        "U004,男,一线城市,36,30,27,460,3780,4.7",
+        "U005,女,三线及以下,23,6,10,135,580,3.8",
+        "U006,男,新一线,,21,21,340,2560,4.5",
+        "U007,女,一线城市,41,34,29,510,4320,4.8",
+        "U008,男,二线城市,28,12,16,220,1410,4.1",
+        "U009,女,一线城市,34,27,25,420,3390,4.6",
+        "U010,男,三线及以下,25,8,12,160,820,3.9",
+        "U011,女,新一线,31,20,22,330,2490,4.5",
+        "U012,男,二线城市,38,29,26,440,3560,4.7",
+        "U013,女,三线及以下,22,5,9,120,490,3.6",
+        "U014,男,一线城市,33,25,,410,3210,4.5",
+        "U015,女,新一线,27,15,17,260,1780,4.2",
+        "U016,男,二线城市,30,19,20,310,2310,4.4",
+        "U017,女,一线城市,39,32,28,490,4080,4.8",
+        "U018,男,三线及以下,24,7,11,150,710,3.8",
+        "U019,女,一线城市,37,40,38,1860,14200,4.9",
+        "U020,男,新一线,35,28,24,430,3480,4.6",
+        "U021,女,二线城市,26,11,15,205,1290,4.1",
+        "U022,男,一线城市,42,35,30,540,4590,4.8",
+        "U023,女,三线及以下,28,13,14,195,1180,4.0",
+        "U024,男,新一线,33,23,22,360,2780,4.5",
+        "U025,女,一线城市,31,22,21,350,2640,4.5",
+        "U026,男,二线城市,25,9,13,175,960,3.9",
+        "U027,女,新一线,36,31,27,470,3890,4.7",
+        "U028,男,三线及以下,21,4,8,110,420,3.5",
+        "U029,女,一线城市,34,26,25,415,3320,4.6",
+        "U030,男,二线城市,29,17,18,280,1980,4.3",
+        "U031,女,新一线,40,33,29,500,4190,4.8",
+        "U032,男,一线城市,27,16,19,270,1890,4.3",
+        "U033,女,三线及以下,24,8,11,145,690,3.7",
+        "U034,男,二线城市,32,21,21,345,2610,4.4",
+        "U035,女,一线城市,38,30,26,455,3710,4.7",
+        "U036,男,新一线,26,12,15,215,1360,4.1",
+        "U037,男,一线城市,43,42,36,1580,11800,4.9",
+        "U038,女,二线城市,30,18,19,300,2210,4.4",
+        "U039,男,三线及以下,23,6,10,130,540,3.7",
+        "U040,女,新一线,35,27,24,425,3420,4.6",
+        "U041,男,一线城市,29,16,18,275,1940,4.3",
+        "U042,女,二线城市,33,24,23,375,2860,4.5",
+        "U043,男,新一线,28,14,16,235,1540,4.2",
+        "U044,女,一线城市,76,36,28,520,4420,4.8",
+        "U045,男,三线及以下,26,10,13,185,1040,4.0",
+        "U046,女,新一线,31,20,21,335,2520,4.5",
+        "U047,男,二线城市,37,29,25,445,3610,4.6",
+        "U048,女,一线城市,25,11,14,200,1220,4.1",
+        "U049,男,新一线,34,26,24,405,3190,4.6",
+        "U050,女,二线城市,29,17,19,285,2060,4.3"
+      ].join("\n");
+
+      /* ======================================================================
+         2. 应用全局状态管理
+         ====================================================================== */
+      const state = {
+        fileName: "",
+        headers: [],
+        rawRows: [],          // 原始未清洗行数据（用于“恢复清洗前”对比）
+        rows: [],             // 当前生效行数据
+        imputedCells: new Set(), // 记录已填补单元格键 "rowIdx:colIdx"
+        isCleaned: false,
+        preCleanSnapshot: null, // { healthScore, missingCount, missingRate, actions }
+        analytics: null,      // 完整统计与诊断计算结果
+        activeInsightTab: "business",
+        previewFilter: "all",
+        previewCollapsed: false,
+        histChart: null,
+        scatterChart: null,
+        chatHistory: [],
+        apiConfig: {
+          baseUrl: "",
+          model: "",
+          apiKey: ""
+        }
+      };
+
+      const API_STORAGE_KEY = "statai_v2_llm_config";
+
+      /* ======================================================================
+         3. 基础工具函数（Toast 提示、HTML 转义、剪贴板复制、编码自适应 CSV 解析）
+         ====================================================================== */
+
+      function showToast(message, type = "info", duration = 3600) {
+        const container = document.getElementById("toastContainer");
+        const colorMap = {
+          success: "bg-emerald-600 text-white border-emerald-700",
+          error: "bg-red-600 text-white border-red-700",
+          warning: "bg-amber-500 text-white border-amber-600",
+          info: "bg-[#1E3A8A] text-white border-blue-900"
+        };
+        const toast = document.createElement("div");
+        toast.className = `toast-enter pointer-events-auto flex items-center justify-between gap-3 px-4 py-3 rounded-xl border shadow-lg text-xs sm:text-sm font-medium ${colorMap[type] || colorMap.info}`;
+        toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
+        container.appendChild(toast);
+
+        setTimeout(() => {
+          toast.style.opacity = "0";
+          toast.style.transition = "opacity 0.25s ease";
+          setTimeout(() => toast.remove(), 260);
+        }, duration);
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function fmt(num, digits = 2) {
+        if (!Number.isFinite(num)) return "0.00";
+        return num.toFixed(digits);
+      }
+
+      function fmtPct(ratio, digits = 1) {
+        if (!Number.isFinite(ratio)) return "0.0%";
+        return (ratio * 100).toFixed(digits) + "%";
+      }
+
+      /**
+       * 兼容 iframe 沙盒的剪贴板复制函数（优先 execCommand）
+       */
+      function copyToClipboard(text) {
+        try {
+          const textarea = document.createElement("textarea");
+          textarea.value = text;
+          textarea.style.position = "fixed";
+          textarea.style.left = "-9999px";
+          textarea.style.top = "0";
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          const ok = document.execCommand("copy");
+          document.body.removeChild(textarea);
+          if (ok) return true;
+        } catch (_) {}
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).catch(() => {});
+          return true;
+        }
+        return false;
+      }
+
+      /**
+       * 健壮的 RFC-4180 风格 CSV 解析器
+       */
+      function parseCSVText(csvText) {
+        if (!csvText || typeof csvText !== "string") {
+          throw new Error("CSV 文件内容为空。");
+        }
+        const cleaned = csvText.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        const parsed = [];
+        let row = [];
+        let field = "";
+        let inQuotes = false;
+
+        for (let i = 0; i < cleaned.length; i++) {
+          const ch = cleaned[i];
+          const next = cleaned[i + 1];
+          if (inQuotes) {
+            if (ch === '"' && next === '"') {
+              field += '"';
+              i++;
+            } else if (ch === '"') {
+              inQuotes = false;
+            } else {
+              field += ch;
+            }
+          } else {
+            if (ch === '"') {
+              inQuotes = true;
+            } else if (ch === ",") {
+              row.push(field.trim());
+              field = "";
+            } else if (ch === "\n") {
+              row.push(field.trim());
+              parsed.push(row);
+              row = [];
+              field = "";
+            } else {
+              field += ch;
+            }
+          }
+        }
+        if (field.length > 0 || row.length > 0) {
+          row.push(field.trim());
+          parsed.push(row);
+        }
+
+        const nonEmpty = parsed.filter(r => r.some(cell => cell !== ""));
+        if (nonEmpty.length < 2) {
+          throw new Error("CSV 至少需要包含 1 行表头和 1 行数据记录。");
+        }
+
+        const headers = nonEmpty[0].map((h, idx) => (h === "" ? `字段_${idx + 1}` : h));
+        const colCount = headers.length;
+        const rows = nonEmpty.slice(1).map(r => {
+          const out = new Array(colCount);
+          for (let c = 0; c < colCount; c++) {
+            const v = r[c] !== undefined ? r[c] : "";
+            // 将常见缺失占位符统一归一化为空字符串
+            out[c] = /^(na|n\/a|null|nan|none|-)$/i.test(v) ? "" : v;
+          }
+          return out;
+        });
+
+        return { headers, rows };
+      }
+
+      /**
+       * 自动检测 UTF-8 / GBK 编码并读取本地 CSV 文件
+       */
+      function readLocalCSVFile(file) {
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith(".csv")) {
+          showToast("请上传扩展名为 .csv 的表格文件。", "error");
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          try {
+            const buffer = e.target.result;
+            let text = new TextDecoder("utf-8").decode(buffer);
+            // 若 UTF-8 解码出现乱码替换符，则自动尝试 GBK（兼容 Excel 默认导出）
+            if (text.includes("\uFFFD")) {
+              try {
+                text = new TextDecoder("gbk").decode(buffer);
+              } catch (_) {}
+            }
+            loadCSVData(text, file.name);
+          } catch (err) {
+            showToast("解析 CSV 失败：" + err.message, "error");
+          }
+        };
+        reader.onerror = function () {
+          showToast("读取本地文件出错，请重试。", "error");
+        };
+        reader.readAsArrayBuffer(file);
+      }
+
+      /* ======================================================================
+         4. 严谨统计计算与 AI 诊断核心引擎（零 NaN 保证）
+         ====================================================================== */
+
+      function isFiniteNumeric(str) {
+        if (str === "" || str === null || str === undefined) return false;
+        const num = Number(str);
+        return Number.isFinite(num);
+      }
+
+      /**
+       * 线性插值分位数（与 R-7 / Excel PERCENTILE.INC 一致）
+       */
+      function calcQuantile(sortedArr, p) {
+        const n = sortedArr.length;
+        if (n === 0) return 0;
+        if (n === 1) return sortedArr[0];
+        const pos = (n - 1) * p;
+        const lo = Math.floor(pos);
+        const hi = Math.ceil(pos);
+        if (lo === hi) return sortedArr[lo];
+        return sortedArr[lo] + (sortedArr[hi] - sortedArr[lo]) * (pos - lo);
+      }
+
+      /**
+       * 成对计算 Pearson 相关系数 r 与 OLS 线性回归（y = slope * x + intercept）
+       */
+      function calcPairwiseRegression(rows, colIdxX, colIdxY) {
+        const xs = [];
+        const ys = [];
+        const rowIndices = [];
+        for (let r = 0; r < rows.length; r++) {
+          const vx = rows[r][colIdxX];
+          const vy = rows[r][colIdxY];
+          if (isFiniteNumeric(vx) && isFiniteNumeric(vy)) {
+            xs.push(Number(vx));
+            ys.push(Number(vy));
+            rowIndices.push(r);
+          }
+        }
+        const n = xs.length;
+        if (n < 2) {
+          return { n, r: 0, r2: 0, slope: 0, intercept: 0, xs, ys, rowIndices };
+        }
+        let sumX = 0, sumY = 0;
+        for (let i = 0; i < n; i++) {
+          sumX += xs[i];
+          sumY += ys[i];
+        }
+        const meanX = sumX / n;
+        const meanY = sumY / n;
+
+        let sxx = 0, syy = 0, sxy = 0;
+        for (let i = 0; i < n; i++) {
+          const dx = xs[i] - meanX;
+          const dy = ys[i] - meanY;
+          sxx += dx * dx;
+          syy += dy * dy;
+          sxy += dx * dy;
+        }
+
+        const slope = sxx > 1e-12 ? sxy / sxx : 0;
+        const intercept = meanY - slope * meanX;
+        let r = (sxx > 1e-12 && syy > 1e-12) ? sxy / Math.sqrt(sxx * syy) : 0;
+        r = Math.max(-1, Math.min(1, r));
+        const r2 = r * r;
+
+        return { n, r, r2, slope, intercept, xs, ys, rowIndices };
+      }
+
+      /**
+       * 对当前数据集执行全量统计计算、健康度评估与诊断指标提取
+       */
+      function runFullAnalytics(headers, rows) {
+        const rowCount = rows.length;
+        const colCount = headers.length;
+        const totalCells = rowCount * colCount;
+
+        let totalMissing = 0;
+        let totalNumericCells = 0;
+        let totalOutliers = 0;
+
+        const numericCols = [];
+        const categoricalCols = [];
+        const missingDetails = [];
+        const outlierCellSet = new Set(); // "rowIdx:colIdx"
+        const rowHasMissing = new Set();
+        const rowHasOutlier = new Set();
+
+        for (let c = 0; c < colCount; c++) {
+          const colName = headers[c];
+          const values = [];
+          const valueEntries = []; // { rowIdx, val }
+          let missingCount = 0;
+          let nonEmptyCount = 0;
+          let numericParseCount = 0;
+
+          for (let r = 0; r < rowCount; r++) {
+            const raw = rows[r][c];
+            if (raw === "") {
+              missingCount++;
+              totalMissing++;
+              rowHasMissing.add(r);
+            } else {
+              nonEmptyCount++;
+              if (isFiniteNumeric(raw)) {
+                numericParseCount++;
+                const num = Number(raw);
+                values.push(num);
+                valueEntries.push({ rowIdx: r, val: num });
+              }
+            }
+          }
+
+          // 判定列类型：非空值中数值占比 >= 90% 且非纯编号（如全为递增ID也可保留，但优先排除明确 ID 文本列）
+          const isNumeric = nonEmptyCount > 0 && numericParseCount === nonEmptyCount;
+
+          if (isNumeric) {
+            totalNumericCells += values.length;
+            const n = values.length;
+            const sorted = [...values].sort((a, b) => a - b);
+            const sum = values.reduce((acc, v) => acc + v, 0);
+            const mean = n > 0 ? sum / n : 0;
+            const min = sorted[0] ?? 0;
+            const max = sorted[n - 1] ?? 0;
+            const q1 = calcQuantile(sorted, 0.25);
+            const median = calcQuantile(sorted, 0.5);
+            const q3 = calcQuantile(sorted, 0.75);
+            const iqr = q3 - q1;
+
+            let sumSq = 0;
+            for (let i = 0; i < n; i++) {
+              const d = values[i] - mean;
+              sumSq += d * d;
+            }
+            const sd = n > 1 ? Math.sqrt(sumSq / (n - 1)) : 0;
+
+            // 无偏样本偏度 G1（防除零与 n < 3 保护）
+            let skewness = 0;
+            if (n >= 3 && sd > 1e-12) {
+              let sumCube = 0;
+              for (let i = 0; i < n; i++) {
+                sumCube += Math.pow((values[i] - mean) / sd, 3);
+              }
+              skewness = (n / ((n - 1) * (n - 2))) * sumCube;
+            }
+
+            const cv = Math.abs(mean) > 1e-9 ? sd / Math.abs(mean) : 0;
+
+            // Tukey 1.5 * IQR 异常值检测
+            const lowerBound = q1 - 1.5 * iqr;
+            const upperBound = q3 + 1.5 * iqr;
+            const outliers = [];
+            if (max > min) {
+              for (const entry of valueEntries) {
+                if (entry.val < lowerBound || entry.val > upperBound) {
+                  outliers.push({
+                    rowIdx: entry.rowIdx,
+                    rowNum: entry.rowIdx + 1,
+                    val: entry.val,
+                    direction: entry.val > upperBound ? "偏高" : "偏低"
+                  });
+                  outlierCellSet.add(`${entry.rowIdx}:${c}`);
+                  rowHasOutlier.add(entry.rowIdx);
+                  totalOutliers++;
+                }
+              }
+            }
+
+            // Top 20% 帕累托贡献度（针对非负指标计算）
+            let top20Share = null;
+            if (min >= 0 && sum > 0 && n >= 5) {
+              const desc = [...sorted].reverse();
+              const topCount = Math.max(1, Math.round(n * 0.2));
+              const topSum = desc.slice(0, topCount).reduce((a, b) => a + b, 0);
+              top20Share = {
+                topCount,
+                share: topSum / sum,
+                topAvg: topSum / topCount,
+                restAvg: n > topCount ? (sum - topSum) / (n - topCount) : 0
+              };
+            }
+
+            const statObj = {
+              colIdx: c,
+              name: colName,
+              n,
+              missing: missingCount,
+              missingRate: rowCount > 0 ? missingCount / rowCount : 0,
+              sum,
+              mean,
+              sd,
+              median,
+              min,
+              max,
+              q1,
+              q3,
+              iqr,
+              lowerBound,
+              upperBound,
+              skewness,
+              cv,
+              outliers,
+              top20Share,
+              values
+            };
+            numericCols.push(statObj);
+
+            if (missingCount > 0) {
+              const useMedian = Math.abs(skewness) >= 0.5;
+              missingDetails.push({
+                colIdx: c,
+                name: colName,
+                isNumeric: true,
+                count: missingCount,
+                rate: missingCount / rowCount,
+                skewness,
+                strategy: useMedian ? "median" : "mean",
+                strategyLabel: useMedian ? "中位数填补" : "均值填补",
+                fillValue: useMedian ? median : mean,
+                reason: useMedian
+                  ? `偏度 = ${fmt(skewness)}（|偏度| ≥ 0.5，分布偏斜），采用中位数 ${fmt(median)} 可避免极值拉偏`
+                  : `偏度 = ${fmt(skewness)}（|偏度| < 0.5，分布近似对称），采用均值 ${fmt(mean)} 保留分布中心`
+              });
+            }
+          } else {
+            // 分类字段统计频数与众数
+            const freq = {};
+            for (let r = 0; r < rowCount; r++) {
+              const val = rows[r][c];
+              if (val !== "") {
+                freq[val] = (freq[val] || 0) + 1;
+              }
+            }
+            const entries = Object.entries(freq).sort((a, b) => b[1] - a[1]);
+            const modeVal = entries.length > 0 ? entries[0][0] : "未知";
+            const uniqueCount = entries.length;
+
+            categoricalCols.push({
+              colIdx: c,
+              name: colName,
+              nonEmptyCount,
+              missing: missingCount,
+              uniqueCount,
+              modeVal,
+              topCategories: entries.slice(0, 5)
+            });
+
+            if (missingCount > 0) {
+              missingDetails.push({
+                colIdx: c,
+                name: colName,
+                isNumeric: false,
+                count: missingCount,
+                rate: missingCount / rowCount,
+                skewness: 0,
+                strategy: "mode",
+                strategyLabel: "众数填补",
+                fillValue: modeVal,
+                reason: `分类变量共 ${uniqueCount} 个类别，建议以高频众数「${modeVal}」填补`
+              });
+            }
+          }
+        }
+
+        // 计算全量数值变量两两 Pearson 相关系数矩阵与排序列表
+        const correlations = [];
+        for (let i = 0; i < numericCols.length; i++) {
+          for (let j = i + 1; j < numericCols.length; j++) {
+            const colA = numericCols[i];
+            const colB = numericCols[j];
+            const reg = calcPairwiseRegression(rows, colA.colIdx, colB.colIdx);
+            const absR = Math.abs(reg.r);
+            const level = absR >= 0.7 ? "强相关" : absR >= 0.4 ? "中等相关" : "弱相关";
+            correlations.push({
+              colA,
+              colB,
+              r: reg.r,
+              absR,
+              r2: reg.r2,
+              slope: reg.slope,
+              intercept: reg.intercept,
+              n: reg.n,
+              direction: reg.r >= 0 ? "正相关" : "负相关",
+              level
+            });
+          }
+        }
+        correlations.sort((a, b) => b.absR - a.absR);
+
+        // 识别“核心业务目标指标”（优先匹配消费/金额/收入/营收/销售，否则选总关联度最高的正值数值变量）
+        let targetCol = null;
+        if (numericCols.length > 0) {
+          targetCol =
+            numericCols.find(c => /消费金额|销售额|营收|GMV|成交额|总金额/i.test(c.name)) ||
+            numericCols.find(c => /金额|收入|消费|利润|评分|分数/i.test(c.name)) ||
+            numericCols[numericCols.length - 1];
+        }
+
+        // 与目标变量最相关的驱动因子排序
+        const targetDrivers = targetCol
+          ? correlations
+              .filter(p => p.colA.colIdx === targetCol.colIdx || p.colB.colIdx === targetCol.colIdx)
+              .map(p => ({
+                driver: p.colA.colIdx === targetCol.colIdx ? p.colB : p.colA,
+                r: p.r,
+                absR: p.absR,
+                r2: p.r2,
+                level: p.level,
+                direction: p.direction
+              }))
+              .sort((a, b) => b.absR - a.absR)
+          : [];
+
+        // 按分类字段拆解核心指标均值（如城市等级、性别等，排除唯一值接近样本数的 ID 列）
+        const groupBreakdowns = [];
+        if (targetCol) {
+          const validCatCols = categoricalCols.filter(c => c.uniqueCount >= 2 && c.uniqueCount <= Math.min(8, Math.floor(rowCount * 0.5)));
+          for (const cat of validCatCols) {
+            const groups = {};
+            for (let r = 0; r < rowCount; r++) {
+              const gName = rows[r][cat.colIdx];
+              const yVal = rows[r][targetCol.colIdx];
+              if (gName !== "" && isFiniteNumeric(yVal)) {
+                if (!groups[gName]) groups[gName] = { sum: 0, count: 0 };
+                groups[gName].sum += Number(yVal);
+                groups[gName].count++;
+              }
+            }
+            const summary = Object.entries(groups)
+              .map(([name, info]) => ({ name, count: info.count, mean: info.sum / info.count }))
+              .sort((a, b) => b.mean - a.mean);
+            if (summary.length >= 2) {
+              groupBreakdowns.push({ catName: cat.name, targetName: targetCol.name, groups: summary });
+            }
+          }
+        }
+
+        // --------------------------------------------------------------------
+        // 四维度数据健康度评分算法（0 - 100，透明、敏感且具统计解释力）
+        // --------------------------------------------------------------------
+        const missingRate = totalCells > 0 ? totalMissing / totalCells : 0;
+        const completenessScore = totalMissing === 0
+          ? 100
+          : Math.max(0, Math.round(100 - missingRate * 100 * 12 - missingDetails.length * 2.5));
+
+        const outlierRate = totalNumericCells > 0 ? totalOutliers / totalNumericCells : 0;
+        const robustnessScore = totalOutliers === 0
+          ? 100
+          : Math.max(0, Math.round(100 - outlierRate * 100 * 10 - (numericCols.filter(c => c.outliers.length > 0).length * 2)));
+
+        const avgAbsSkew = numericCols.length > 0
+          ? numericCols.reduce((acc, c) => acc + Math.abs(c.skewness), 0) / numericCols.length
+          : 0;
+        const balanceScore = Math.max(20, Math.min(100, Math.round(100 - avgAbsSkew * 24)));
+
+        const sigPairs = correlations.filter(p => p.absR >= 0.4).length;
+        const sigPairRatio = correlations.length > 0 ? sigPairs / correlations.length : 0;
+        const correlationScore = correlations.length === 0
+          ? 60
+          : Math.min(100, Math.round(45 + sigPairRatio * 55));
+
+        const overallHealth = Math.round(
+          completenessScore * 0.30 +
+          robustnessScore * 0.25 +
+          balanceScore * 0.20 +
+          correlationScore * 0.25
+        );
+
+        const healthGrade =
+          overallHealth >= 88 ? { label: "优质数据", cls: "bg-emerald-50 text-emerald-700 border border-emerald-200", color: "#10B981" } :
+          overallHealth >= 72 ? { label: "良好可用", cls: "bg-blue-50 text-[#1E3A8A] border border-blue-200", color: "#2563EB" } :
+          overallHealth >= 55 ? { label: "建议治理", cls: "bg-amber-50 text-amber-700 border border-amber-200", color: "#F59E0B" } :
+                                { label: "高风险", cls: "bg-red-50 text-red-700 border border-red-200", color: "#EF4444" };
+
+        return {
+          rowCount,
+          colCount,
+          totalCells,
+          totalMissing,
+          missingRate,
+          totalOutliers,
+          outlierRate,
+          numericCols,
+          categoricalCols,
+          missingDetails,
+          outlierCellSet,
+          rowHasMissing,
+          rowHasOutlier,
+          correlations,
+          targetCol,
+          targetDrivers,
+          groupBreakdowns,
+          health: {
+            overall: overallHealth,
+            grade: healthGrade,
+            completeness: { score: completenessScore, desc: totalMissing === 0 ? "无空白缺失单元格，完整度 100%" : `共 ${totalMissing} 处缺失（占比 ${fmtPct(missingRate, 2)}），涉及 ${missingDetails.length} 个字段` },
+            robustness: { score: robustnessScore, desc: totalOutliers === 0 ? "未检出 1.5×IQR 离群极值" : `共检出 ${totalOutliers} 处离群点（占比 ${fmtPct(outlierRate, 2)}）` },
+            balance: { score: balanceScore, desc: `数值变量平均绝对偏度 ${fmt(avgAbsSkew)}（<0.5 为近似对称）` },
+            correlation: { score: correlationScore, desc: correlations.length > 0 ? `${sigPairs}/${correlations.length} 组变量对呈中强以上相关（|r|≥0.4）` : "需至少 2 个数值变量计算关联度" }
+          }
+        };
+      }
+
+      /* ======================================================================
+         5. 视图渲染：仪表盘、诊断清单、双视角洞察、三线表、数据预览表
+         ====================================================================== */
+
+      function getBarColorClass(score) {
+        if (score >= 85) return "bg-emerald-500";
+        if (score >= 65) return "bg-blue-600";
+        if (score >= 50) return "bg-amber-500";
+        return "bg-red-500";
+      }
+
+      /**
+       * 渲染健康度综合仪表盘与 4 个子维度
+       */
+      function renderHealthDashboard(a) {
+        const h = a.health;
+        const circumference = 2 * Math.PI * 50; // 314.159
+        const offset = circumference * (1 - h.overall / 100);
+
+        const circle = document.getElementById("healthGaugeCircle");
+        circle.style.strokeDashoffset = offset.toFixed(2);
+        circle.style.stroke = h.grade.color;
+
+        document.getElementById("healthScoreNum").textContent = String(h.overall);
+        const badge = document.getElementById("healthGradeBadge");
+        badge.textContent = h.grade.label;
+        badge.className = `px-2.5 py-0.5 rounded-full text-xs font-semibold ${h.grade.cls}`;
+
+        // 清洗前后得分变化徽章
+        const deltaBadge = document.getElementById("healthDeltaBadge");
+        if (state.isCleaned && state.preCleanSnapshot) {
+          const diff = h.overall - state.preCleanSnapshot.healthScore;
+          if (diff >= 0) {
+            deltaBadge.textContent = `清洗后 +${diff}分`;
+            deltaBadge.classList.remove("hidden");
+          } else {
+            deltaBadge.classList.add("hidden");
+          }
+        } else {
+          deltaBadge.classList.add("hidden");
+        }
+
+        // 4 维度更新
+        const dims = [
+          ["Completeness", h.completeness],
+          ["Robustness", h.robustness],
+          ["Balance", h.balance],
+          ["Correlation", h.correlation]
+        ];
+        dims.forEach(([key, obj]) => {
+          document.getElementById(`dim${key}Val`).textContent = `${obj.score}分`;
+          const bar = document.getElementById(`dim${key}Bar`);
+          bar.style.width = `${obj.score}%`;
+          bar.className = `h-full rounded-full transition-all duration-500 ${getBarColorClass(obj.score)}`;
+          document.getElementById(`dim${key}Desc`).textContent = obj.desc;
+        });
+
+        // 底部 4 个小 KPI
+        document.getElementById("kpiRows").textContent = String(a.rowCount);
+        document.getElementById("kpiNumCols").textContent = String(a.numericCols.length);
+        const kpiM = document.getElementById("kpiMissing");
+        kpiM.textContent = String(a.totalMissing);
+        kpiM.className = `text-sm font-bold tabular-nums ${a.totalMissing > 0 ? "text-red-600" : "text-emerald-600"}`;
+
+        const kpiO = document.getElementById("kpiOutliers");
+        kpiO.textContent = String(a.totalOutliers);
+        kpiO.className = `text-sm font-bold tabular-nums ${a.totalOutliers > 0 ? "text-amber-600" : "text-emerald-600"}`;
+      }
+
+      /**
+       * 渲染 AI 智能诊断问题清单（按高风险 / 需关注 / 良好分级）
+       */
+      function renderDiagnosticList(a) {
+        const container = document.getElementById("diagnosticList");
+        const items = [];
+
+        // 1) 缺失值智能诊断
+        if (a.missingDetails.length > 0) {
+          const severity = a.missingRate >= 0.05 ? "high" : "warn";
+          const detailHtml = a.missingDetails
+            .map(m => `<li class="text-xs text-slate-600"><strong class="text-slate-800">${escapeHtml(m.name)}</strong>：缺失 <span class="text-red-600 font-semibold">${m.count}</span> 条（${fmtPct(m.rate)}）→ 建议 <span class="font-semibold text-[#1E3A8A]">${m.strategyLabel}</span>（${escapeHtml(m.reason)}）</li>`)
+            .join("");
+
+          items.push({
+            severity,
+            title: `缺失值智能诊断：检测到 ${a.totalMissing} 处空白记录（涉及 ${a.missingDetails.length} 列）`,
+            bodyHtml: `
+              <ul class="list-disc pl-4 space-y-1 mt-1.5">${detailHtml}</ul>
+              <div class="mt-3 flex flex-wrap items-center gap-2">
+                <button id="smartCleanBtn" type="button"
+                  class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-[#2563EB] hover:bg-blue-700 shadow-sm transition">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  采纳建议：一键智能清洗
+                </button>
+                <span class="text-[11px] text-slate-400">自动按偏度执行中位数/均值填补，并实时刷新全局指标与图表</span>
+              </div>
+            `
+          });
+        } else {
+          items.push({
+            severity: "good",
+            title: state.isCleaned ? "缺失值智能诊断：已完成全部缺失项填补（完整性 100%）" : "缺失值智能诊断：字段完整性 100%，未发现空白值",
+            bodyHtml: `<p class="text-xs text-slate-600 mt-1">${state.isCleaned ? "已按各变量偏态特征完成最优统计填补，当前无缺失记录，可直接进入回归与分群建模。" : "全部 " + a.totalCells + " 个数据单元格均有效，无需执行缺失插补。"}</p>`
+          });
+        }
+
+        // 2) 异常值精准扫描（1.5 × IQR）
+        const outlierCols = a.numericCols.filter(c => c.outliers.length > 0);
+        if (outlierCols.length > 0) {
+          const listHtml = outlierCols.map(c => {
+            const samples = c.outliers.slice(0, 4).map(o => `第${o.rowNum}行(${fmt(o.val, Number.isInteger(o.val) ? 0 : 2)})`).join("、");
+            const more = c.outliers.length > 4 ? ` 等共 ${c.outliers.length} 条` : "";
+            return `<li class="text-xs text-slate-600"><strong class="text-slate-800">${escapeHtml(c.name)}</strong>：正常区间 [${fmt(c.lowerBound)}, ${fmt(c.upperBound)}]，检出 <span class="text-amber-700 font-semibold">${c.outliers.length}</span> 条异常（${samples}${more}）</li>`;
+          }).join("");
+
+          items.push({
+            severity: a.totalOutliers >= 5 ? "high" : "warn",
+            title: `异常值精准扫描（1.5×IQR）：检出 ${a.totalOutliers} 处离群数值（涉及 ${outlierCols.length} 列）`,
+            bodyHtml: `
+              <ul class="list-disc pl-4 space-y-1 mt-1.5">${listHtml}</ul>
+              <p class="text-[11.5px] text-amber-800 bg-amber-50/80 border border-amber-200/70 rounded-lg px-2.5 py-1.5 mt-2">
+                <strong>业务甄别提示：</strong>请区分「录入错误/脏数据」与「高价值超级用户/特殊群体」。若属真实超级 VIP 消费，建议保留并单独分层建模，而非直接删除。
+              </p>
+            `
+          });
+        } else {
+          items.push({
+            severity: "good",
+            title: "异常值精准扫描（1.5×IQR）：未发现显著离群记录",
+            bodyHtml: `<p class="text-xs text-slate-600 mt-1">所有数值变量观测值均落在 [Q1 − 1.5IQR, Q3 + 1.5IQR] 稳健区间内，数据抗干扰能力良好。</p>`
+          });
+        }
+
+        // 3) 分布偏态与离散度诊断
+        const skewedCols = a.numericCols.filter(c => Math.abs(c.skewness) >= 0.5);
+        const highCvCols = a.numericCols.filter(c => c.cv >= 0.5);
+        if (skewedCols.length > 0 || highCvCols.length > 0) {
+          const skewDesc = skewedCols.length > 0
+            ? skewedCols.map(c => `<strong class="text-slate-800">${escapeHtml(c.name)}</strong>（偏度 ${fmt(c.skewness)}，${c.skewness > 0 ? "右偏/长尾" : "左偏"}）`).join("、")
+            : "无显著偏态字段";
+          const cvDesc = highCvCols.length > 0
+            ? highCvCols.map(c => `<strong class="text-slate-800">${escapeHtml(c.name)}</strong>（CV = ${fmtPct(c.cv)}）`).join("、")
+            : "各字段波动较为平稳";
+
+          items.push({
+            severity: skewedCols.some(c => Math.abs(c.skewness) >= 1.5) ? "warn" : "warn",
+            title: `分布偏态与离散度诊断：${skewedCols.length} 个偏态字段 / ${highCvCols.length} 个高离散字段`,
+            bodyHtml: `
+              <div class="text-xs text-slate-600 mt-1.5 space-y-1">
+                <p><strong>偏态特征：</strong>${skewDesc}。明显右偏通常意味着存在头部集中与“二八长尾效应”。</p>
+                <p><strong>离散程度：</strong>${cvDesc}。高变异系数表明样本间个体差异显著，建议优先采用中位数或对数变换辅助分析。</p>
+              </div>
+            `
+          });
+        } else {
+          items.push({
+            severity: "good",
+            title: "分布偏态与离散度诊断：各数值变量分布较为均衡",
+            bodyHtml: `<p class="text-xs text-slate-600 mt-1">全部数值变量绝对偏度均小于 0.5 且变异系数适中，较好满足参数检验与线性模型前提假设。</p>`
+          });
+        }
+
+        // 4) 核心驱动因子自动挖掘
+        if (a.correlations.length > 0) {
+          const posTop = a.correlations.filter(p => p.r > 0).slice(0, 3);
+          const negTop = a.correlations.filter(p => p.r < 0).slice(0, 1);
+
+          const posHtml = posTop.map(p =>
+            `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-[#1E3A8A] border border-blue-200/80 text-xs font-medium">${escapeHtml(p.colA.name)} × ${escapeHtml(p.colB.name)} <strong>(r=${fmt(p.r)}, ${p.level})</strong></span>`
+          ).join(" ");
+
+          const negHtml = negTop.length > 0
+            ? `<p class="text-xs text-slate-600 mt-1.5"><strong>负相关组合：</strong>${escapeHtml(negTop[0].colA.name)} × ${escapeHtml(negTop[0].colB.name)}（r = ${fmt(negTop[0].r)}，${negTop[0].level}）。</p>`
+            : `<p class="text-xs text-slate-500 mt-1.5">当前数据集中未检出明显负向关联变量对，核心数值指标整体呈正向协同增长趋势。</p>`;
+
+          items.push({
+            severity: posTop.some(p => p.absR >= 0.7) ? "good" : "warn",
+            title: `核心驱动因子自动挖掘：遍历 ${a.correlations.length} 组变量对，定位最强关联结构`,
+            bodyHtml: `
+              <div class="flex flex-wrap gap-1.5 mt-2">${posHtml}</div>
+              ${negHtml}
+            `
+          });
+        } else {
+          items.push({
+            severity: "warn",
+            title: "核心驱动因子自动挖掘：数值变量不足",
+            bodyHtml: `<p class="text-xs text-slate-600 mt-1">至少需要 2 个数值型变量才能执行 Pearson 相关性矩阵计算。</p>`
+          });
+        }
+
+        // 统计各严重级别数量
+        const counts = { high: 0, warn: 0, good: 0 };
+        items.forEach(it => counts[it.severity]++);
+
+        document.getElementById("diagSummaryCounts").innerHTML = `
+          <span class="px-2 py-0.5 rounded-full bg-red-50 text-red-700 font-semibold border border-red-200">高风险 ${counts.high}</span>
+          <span class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-semibold border border-amber-200">需关注 ${counts.warn}</span>
+          <span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">良好 ${counts.good}</span>
+        `;
+
+        const tagStyle = {
+          high: { label: "高风险", badge: "bg-red-100 text-red-700 border-red-200", border: "border-l-red-500" },
+          warn: { label: "需关注", badge: "bg-amber-100 text-amber-800 border-amber-200", border: "border-l-amber-500" },
+          good: { label: "良好", badge: "bg-emerald-100 text-emerald-700 border-emerald-200", border: "border-l-emerald-500" }
+        };
+
+        container.innerHTML = items.map(item => {
+          const st = tagStyle[item.severity];
+          return `
+            <div class="rounded-lg border border-slate-200 border-l-4 ${st.border} bg-slate-50/40 p-3.5 hover:bg-slate-50 transition">
+              <div class="flex items-start justify-between gap-2">
+                <h3 class="text-xs sm:text-[13.5px] font-bold text-slate-900">${item.title}</h3>
+                <span class="shrink-0 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${st.badge}">${st.label}</span>
+              </div>
+              ${item.bodyHtml}
+            </div>
+          `;
+        }).join("");
+
+        // 绑定“一键智能清洗”按钮事件
+        const cleanBtn = document.getElementById("smartCleanBtn");
+        if (cleanBtn) {
+          cleanBtn.addEventListener("click", applySmartCleaning);
+        }
+      }
+
+      /**
+       * 生成结构化商业洞察 & 学术解读（同时提供 HTML 渲染版和纯文本/Markdown 版）
+       */
+      function buildDualInsights(a) {
+        const target = a.targetCol;
+        const topDriver = a.targetDrivers[0];
+        const secondDriver = a.targetDrivers[1];
+        const topPair = a.correlations[0];
+        const pareto = target && target.top20Share ? target.top20Share : null;
+        const outlierCols = a.numericCols.filter(c => c.outliers.length > 0);
+        const highSkewCols = a.numericCols.filter(c => Math.abs(c.skewness) >= 0.5);
+        const strongPairs = a.correlations.filter(p => p.absR >= 0.7);
+        const firstGroup = a.groupBreakdowns[0];
+
+        // ---------------- 1. 商业决策洞察 ----------------
+        const execSummary = target
+          ? `本次共分析 ${a.rowCount} 条有效样本（数据健康度 ${a.health.overall} 分，评级「${a.health.grade.label}」）。核心业务指标「${target.name}」均值为 ${fmt(target.mean)}、中位数为 ${fmt(target.median)}（离散系数 CV = ${fmtPct(target.cv)}）。${topDriver ? `量化归因显示，「${topDriver.driver.name}」是影响「${target.name}」的最核心正向杠杆（r = ${fmt(topDriver.r)}，可解释 ${fmtPct(topDriver.r2)} 的波动）。` : ""}`
+          : `本次共分析 ${a.rowCount} 条样本、${a.colCount} 个字段，数据综合健康度为 ${a.health.overall} 分。`;
+
+        const leverLines = a.targetDrivers.slice(0, 3).map((d, idx) =>
+          `${idx + 1}. <strong>${escapeHtml(d.driver.name)}</strong> → <strong>${escapeHtml(target.name)}</strong>：Pearson r = <strong>${fmt(d.r)}</strong>（R² = ${fmtPct(d.r2)}，${d.level}${d.direction}）。${d.absR >= 0.7 ? "属于高敏感度核心增长抓手，投入产出比最高。" : "具备中等辅助拉动效应，可作为协同优化指标。"}`
+        );
+
+        let structureDesc = "";
+        if (pareto) {
+          structureDesc += `头部 20% 样本（前 ${pareto.topCount} 条）贡献了「${target.name}」总量的 <strong>${fmtPct(pareto.share)}</strong>（头部均值 ${fmt(pareto.topAvg)} vs 其余 80% 均值 ${fmt(pareto.restAvg)}，相差 <strong>${fmt(pareto.restAvg > 0 ? pareto.topAvg / pareto.restAvg : 1, 1)} 倍</strong>），${pareto.share >= 0.42 ? "呈现显著的头部集中与二八长尾特征" : "整体分布相对均衡"}。`;
+        }
+        if (firstGroup && firstGroup.groups.length >= 2) {
+          const topG = firstGroup.groups[0];
+          const botG = firstGroup.groups[firstGroup.groups.length - 1];
+          structureDesc += ` 按「${firstGroup.catName}」分层来看，<strong>${escapeHtml(topG.name)}</strong>表现最佳（均值 ${fmt(topG.mean)}），较末位 <strong>${escapeHtml(botG.name)}</strong>（均值 ${fmt(botG.mean)}）高出 ${fmtPct(botG.mean > 0 ? (topG.mean - botG.mean) / botG.mean : 0)}。`;
+        }
+        if (!structureDesc) {
+          structureDesc = "当前样本各数值指标呈连续分布特征，可结合直方图观察集中区间与尾部离散情况。";
+        }
+
+        const actions = [];
+        if (a.totalMissing > 0) {
+          actions.push({
+            priority: "P0",
+            color: "bg-red-100 text-red-700",
+            title: "优先修复数据采集断点（质量治理）",
+            desc: `点击上方「一键智能清洗」补齐 ${a.totalMissing} 处缺失值（${a.missingDetails.map(m => m.name).join("、")}），并在前端埋点或 CRM 表单增加必填校验，避免后续报表统计偏差。`
+          });
+        } else {
+          actions.push({
+            priority: "P0",
+            color: "bg-red-100 text-red-700",
+            title: topDriver ? `聚焦核心杠杆「${topDriver.driver.name}」制定增长策略` : "锁定核心业务指标建立常态监控",
+            desc: topDriver
+              ? `「${topDriver.driver.name}」与「${target.name}」相关性高达 r = ${fmt(topDriver.r)}。建议围绕提升「${topDriver.driver.name}」设计激励机制（如阶梯满减、高价值组合包或会员周期权益），直接撬动核心产出。`
+              : "建议补充更多与转化/营收相关的连续行为指标，以定位高弹性增长杠杆。"
+          });
+        }
+
+        actions.push({
+          priority: "P1",
+          color: "bg-amber-100 text-amber-800",
+          title: outlierCols.length > 0 ? "建立高价值离群群体（VIP）专属分层运营" : "实施分层差异化精细运营",
+          desc: outlierCols.length > 0
+            ? `IQR 扫描发现 ${a.totalOutliers} 处异常记录（如「${outlierCols[0].name}」最大值达 ${fmt(outlierCols[0].max)}）。核实非录入错误后，应将其划入 VIP 超级用户池提供专属客服与复购权益，同时在常规均值评估中采用中位数避免失真。`
+            : `结合「${firstGroup ? firstGroup.catName : (target ? target.name : "核心字段")}」分层结果，向腰部潜力样本倾斜促活资源，缩小与头部 20% 群体的差距。`
+        });
+
+        actions.push({
+          priority: "P2",
+          color: "bg-blue-100 text-[#1E3A8A]",
+          title: secondDriver ? `联动次级因子「${secondDriver.driver.name}」提升长期留存` : "深化多维交叉归因与长期追踪",
+          desc: secondDriver
+            ? `「${secondDriver.driver.name}」同样与「${target.name}」显著相关（r = ${fmt(secondDriver.r)}）。建议将其纳入月度复盘看板，构建双指标组合预警体系，防止高客单或高龄/老客群体流失。`
+            : "建议持续沉淀时间序列数据，后续引入分群聚类与留存队列分析。"
+        });
+
+        const businessHtml = `
+          <div class="rounded-lg bg-blue-50/60 border border-blue-200/80 p-3.5">
+            <div class="text-xs font-bold text-[#1E3A8A] uppercase tracking-wide mb-1">核心结论摘要（Executive Summary）</div>
+            <p class="text-xs sm:text-[13.5px] leading-relaxed text-slate-800">${escapeHtml(execSummary)}</p>
+          </div>
+
+          <div>
+            <h3 class="text-xs font-bold text-slate-900 mb-1.5 flex items-center gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-[#2563EB]"></span>
+              关键增长杠杆识别（基于 Pearson 强相关指标）
+            </h3>
+            ${leverLines.length > 0
+              ? `<div class="space-y-1.5 text-xs sm:text-[13px] text-slate-700 leading-relaxed pl-3">${leverLines.map(l => `<p>${l}</p>`).join("")}</div>`
+              : `<p class="text-xs text-slate-500 pl-3">当前数据集中未发现可用于归因的多数值变量组合。</p>`}
+          </div>
+
+          <div>
+            <h3 class="text-xs font-bold text-slate-900 mb-1.5 flex items-center gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-[#2563EB]"></span>
+              头部与尾部群体结构特征
+            </h3>
+            <p class="text-xs sm:text-[13px] text-slate-700 leading-relaxed pl-3">${structureDesc}</p>
+          </div>
+
+          <div>
+            <h3 class="text-xs font-bold text-slate-900 mb-2 flex items-center gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-[#2563EB]"></span>
+              可落地行动建议（优先级排序）
+            </h3>
+            <div class="space-y-2">
+              ${actions.map(act => `
+                <div class="flex items-start gap-2.5 p-2.5 rounded-lg bg-slate-50 border border-slate-200/70">
+                  <span class="shrink-0 px-2 py-0.5 rounded text-[11px] font-bold ${act.color}">${act.priority}</span>
+                  <div>
+                    <div class="text-xs font-bold text-slate-900">${escapeHtml(act.title)}</div>
+                    <p class="text-xs text-slate-600 mt-0.5 leading-relaxed">${escapeHtml(act.desc)}</p>
+                  </div>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        `;
+
+        const businessPlain = [
+          `【商业决策洞察 - ${state.fileName}】`,
+          `1. 核心结论摘要：${execSummary}`,
+          `2. 关键增长杠杆：${a.targetDrivers.slice(0, 3).map(d => `${d.driver.name}与${target.name}呈${d.level}${d.direction}(r=${fmt(d.r)}, R²=${fmtPct(d.r2)})`).join("；") || "暂无"}`,
+          `3. 群体结构特征：${structureDesc.replace(/<[^>]+>/g, "")}`,
+          `4. 行动建议：\n` + actions.map(act => `   [${act.priority}] ${act.title}：${act.desc}`).join("\n")
+        ].join("\n\n");
+
+        // ---------------- 2. 学术统计解读 ----------------
+        const collinearPairs = a.correlations.filter(p => p.absR >= 0.75 && (!target || (p.colA.colIdx !== target.colIdx && p.colB.colIdx !== target.colIdx)));
+
+        const academicBlocks = [
+          {
+            title: "一、样本规模与数据结构评估",
+            text: `本数据集包含 N = ${a.rowCount} 个独立观测样本，共 p = ${a.colCount} 个观测变量（其中连续/数值型变量 ${a.numericCols.length} 个，分类型变量 ${a.categoricalCols.length} 个）。当前样本量满足基础探索性数据分析（EDA）及小型参数估计要求（N ≥ 30 可参考中心极限定理），若拟构建复杂多变量非线性模型建议进一步扩充样本规模。`
+          },
+          {
+            title: "二、缺失机制与统计插补论证",
+            text: a.totalMissing > 0
+              ? `全表检出 ${a.totalMissing} 处缺失值（整体缺失率 ${fmtPct(a.missingRate, 2)}），分布于 ${a.missingDetails.map(m => `「${m.name}」(${m.count}处)`).join("、")}。在缺失率较低（<5%）且近似随机缺失（MAR/MCAR）假设下，直接列表删除会损失统计功效；系统依据各列样本偏度 G1 动态选择单变量插补策略（|G1| ≥ 0.5 选用稳健中位数，|G1| < 0.5 选用算术均值），可在维持样本量的同时最小化分布畸变。`
+              : `当前数据矩阵完整度为 100%（${state.isCleaned ? "已完成基于偏度自适应规则的缺失填补" : "原始采集无空白值"}），所有变量均具备一致的有效样本量 N = ${a.rowCount}，满足完整案例分析（Complete-Case Analysis）要求。`
+          },
+          {
+            title: "三、正态性倾向与离群极值评估",
+            text: highSkewCols.length > 0
+              ? `基于无偏样本偏度（Fisher-Pearson G1）检测，${highSkewCols.map(c => `「${c.name}」(G1=${fmt(c.skewness)})`).join("、")} 呈现显著偏态（|G1| ≥ 0.5），偏离标准正态分布假设；此外 1.5×IQR 检验共定位 ${a.totalOutliers} 处离群点。对于偏态显著指标，采用普通最小二乘（OLS）时残差可能违背正态与同方差假设，建议在建模前进行对数变换（ln(x+1)）或采用分位数/稳健回归。`
+              : `全部数值型变量绝对偏度均低于 0.5，分布形态近似对称且未见剧烈极值扰动，整体较符合正态分布倾向，适用标准参数检验（如 t 检验、ANOVA 与 Pearson 相关）。`
+          },
+          {
+            title: "四、相关性结构与多重共线性预警",
+            text: topPair
+              ? `两两 Pearson 相关分析显示，共有 ${strongPairs.length} 组变量对达到强相关阈值（|r| ≥ 0.7），最高相关组合为「${topPair.colA.name}」与「${topPair.colB.name}」（r = ${fmt(topPair.r)}，R² = ${fmtPct(topPair.r2)}）。${collinearPairs.length > 0 ? `【多重共线性提示】解释变量间存在强共线性组合（如 ${collinearPairs.slice(0, 2).map(p => `${p.colA.name}×${p.colB.name} r=${fmt(p.r)}`).join("、")}），在多元线性回归中建议计算方差膨胀因子（VIF），若 VIF > 5~10 应考虑岭回归（Ridge）、LASSO 或主成分降维（PCA）。` : "当前自变量间未发现严重多重共线性风险，可较稳健地估计回归系数。"}`
+              : "因数值变量数量不足 2 个，暂无法开展相关性与共线性评估。"
+          },
+          {
+            title: "五、后续统计建模路径建议",
+            text: `综合当前数据特征，推荐三条进阶实证分析路径：(1) 归因预测：以「${target ? target.name : "核心目标变量"}」为因变量建立多元线性回归或稳健回归（Huber / Quantile Regression），并输出标准化 Beta 系数比较各因素相对贡献；(2) 无监督分群：对标准化后的核心数值指标执行 K-Means 或层次聚类（配合轮廓系数确定最优 K 值），实现客群画像细分；(3) 组间差异检验：针对${firstGroup ? `「${firstGroup.catName}」等分组` : "不同业务分组"}，若满足正态性采用单因素方差分析（One-Way ANOVA），否则采用非参数 Kruskal-Wallis H 检验或 Mann-Whitney U 检验。`
+          }
+        ];
+
+        const academicHtml = academicBlocks.map(b => `
+          <div class="p-3.5 rounded-lg bg-slate-50/80 border border-slate-200/80">
+            <h3 class="text-xs font-bold text-[#1E3A8A] mb-1">${b.title}</h3>
+            <p class="text-xs sm:text-[13px] text-slate-700 leading-relaxed">${escapeHtml(b.text)}</p>
+          </div>
+        `).join("");
+
+        const academicPlain = `【学术统计解读 - ${state.fileName}】\n\n` + academicBlocks.map(b => `${b.title}\n${b.text}`).join("\n\n");
+
+        return { businessHtml, businessPlain, academicHtml, academicPlain, actions, execSummary };
+      }
+
+      function renderInsights(a) {
+        const res = buildDualInsights(a);
+        state.latestInsights = res;
+        document.getElementById("businessInsightPanel").innerHTML = res.businessHtml;
+        document.getElementById("academicInsightPanel").innerHTML = res.academicHtml;
+      }
+
+      /**
+       * 渲染规范学术三线表（描述性统计）
+       */
+      function renderDescriptiveTable(a) {
+        const emptyEl = document.getElementById("statsTableEmpty");
+        const wrapEl = document.getElementById("statsTableContainer");
+        const tbody = document.querySelector("#descriptiveTable tbody");
+
+        if (a.numericCols.length === 0) {
+          emptyEl.classList.remove("hidden");
+          wrapEl.classList.add("hidden");
+          tbody.innerHTML = "";
+          return;
+        }
+        emptyEl.classList.add("hidden");
+        wrapEl.classList.remove("hidden");
+
+        tbody.innerHTML = a.numericCols.map(c => {
+          const skewHighlight = Math.abs(c.skewness) >= 0.5 ? "text-amber-700 font-semibold" : "text-slate-700";
+          const missHighlight = c.missing > 0 ? "text-red-600 font-semibold" : "text-slate-500";
+          const outHighlight = c.outliers.length > 0 ? "text-amber-700 font-semibold" : "text-slate-500";
+          return `
+            <tr>
+              <td>${escapeHtml(c.name)}</td>
+              <td>${c.n}</td>
+              <td class="${missHighlight}">${c.missing}</td>
+              <td>${fmt(c.mean)}</td>
+              <td>${fmt(c.sd)}</td>
+              <td>${fmt(c.median)}</td>
+              <td>${fmt(c.min)}</td>
+              <td>${fmt(c.max)}</td>
+              <td class="${skewHighlight}">${fmt(c.skewness)}</td>
+              <td>${fmtPct(c.cv)}</td>
+              <td class="${outHighlight}">${c.outliers.length}</td>
+            </tr>
+          `;
+        }).join("");
+      }
+
+      /**
+       * 渲染数据预览表格（支持异常/缺失筛选与单元格语义高亮）
+       */
+      function renderPreviewTable(a) {
+        const thead = document.querySelector("#dataPreviewTable thead");
+        const tbody = document.querySelector("#dataPreviewTable tbody");
+
+        const issueRows = new Set([...a.rowHasMissing, ...a.rowHasOutlier]);
+        document.getElementById("filterCountAll").textContent = String(a.rowCount);
+        document.getElementById("filterCountIssue").textContent = String(issueRows.size);
+        document.getElementById("filterCountMissing").textContent = String(a.rowHasMissing.size);
+        document.getElementById("filterCountOutlier").textContent = String(a.rowHasOutlier.size);
+
+        thead.innerHTML = `<tr><th class="px-3 py-2.5 text-slate-500 font-semibold">#</th>${
+          state.headers.map(h => `<th class="px-3 py-2.5">${escapeHtml(h)}</th>`).join("")
+        }</tr>`;
+
+        const filteredIndices = [];
+        for (let r = 0; r < state.rows.length; r++) {
+          if (state.previewFilter === "all") filteredIndices.push(r);
+          else if (state.previewFilter === "issue" && issueRows.has(r)) filteredIndices.push(r);
+          else if (state.previewFilter === "missing" && a.rowHasMissing.has(r)) filteredIndices.push(r);
+          else if (state.previewFilter === "outlier" && a.rowHasOutlier.has(r)) filteredIndices.push(r);
+        }
+
+        if (filteredIndices.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="${state.headers.length + 1}" class="px-4 py-8 text-center text-slate-400">当前筛选条件下无匹配数据行。</td></tr>`;
+          return;
+        }
+
+        // 为防止超大 CSV 卡顿，前端预览最多渲染 200 行并给提示
+        const maxDisplay = 200;
+        const displayIndices = filteredIndices.slice(0, maxDisplay);
+
+        let rowsHtml = displayIndices.map(r => {
+          const cells = state.rows[r].map((val, c) => {
+            const key = `${r}:${c}`;
+            if (val === "") {
+              return `<td class="px-3 py-2 bg-red-50"><span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-red-100 text-red-700 border border-red-200">缺失</span></td>`;
+            }
+            const isOutlier = a.outlierCellSet.has(key);
+            const isImputed = state.imputedCells.has(key);
+            if (isOutlier) {
+              return `<td class="px-3 py-2 bg-amber-50 text-amber-900 font-semibold" title="Tukey 1.5×IQR 异常值">${escapeHtml(val)} <span class="ml-1 text-[10px] px-1 py-0.2 rounded bg-amber-200/80 text-amber-900">异常</span></td>`;
+            }
+            if (isImputed) {
+              return `<td class="px-3 py-2 bg-emerald-50 text-emerald-900 font-semibold" title="由 AI 智能清洗自动填补">${escapeHtml(val)} <span class="ml-1 text-[10px] px-1 py-0.2 rounded bg-emerald-200/80 text-emerald-900">已补</span></td>`;
+            }
+            return `<td class="px-3 py-2 text-slate-700">${escapeHtml(val)}</td>`;
+          }).join("");
+          return `<tr class="hover:bg-slate-50/80"><td class="px-3 py-2 text-slate-400 font-mono">${r + 1}</td>${cells}</tr>`;
+        }).join("");
+
+        if (filteredIndices.length > maxDisplay) {
+          rowsHtml += `<tr><td colspan="${state.headers.length + 1}" class="px-4 py-2.5 text-center text-xs text-slate-400 bg-slate-50">已展示前 ${maxDisplay} 行（当前筛选共 ${filteredIndices.length} 行）</td></tr>`;
+        }
+        tbody.innerHTML = rowsHtml;
+      }
+
+      /* ======================================================================
+         6. Chart.js 双图表联动可视化（直方图均值线 + 散点 OLS 拟合线）
+         ====================================================================== */
+
+      function destroyCharts() {
+        if (state.histChart) { state.histChart.destroy(); state.histChart = null; }
+        if (state.scatterChart) { state.scatterChart.destroy(); state.scatterChart = null; }
+      }
+
+      /**
+       * 初始化图表变量下拉选项并绘制默认双图
+       */
+      function initAndRenderCharts(a) {
+        destroyCharts();
+
+        const histSelect = document.getElementById("histVarSelect");
+        const xSelect = document.getElementById("scatterXSelect");
+        const ySelect = document.getElementById("scatterYSelect");
+
+        if (a.numericCols.length === 0) {
+          document.getElementById("histChartWrap").classList.add("hidden");
+          document.getElementById("histEmptyMsg").classList.remove("hidden");
+          document.getElementById("histBadges").innerHTML = "";
+          document.getElementById("scatterChartWrap").classList.add("hidden");
+          document.getElementById("scatterEmptyMsg").classList.remove("hidden");
+          document.getElementById("scatterStatsBar").innerHTML = "";
+          return;
+        }
+
+        document.getElementById("histChartWrap").classList.remove("hidden");
+        document.getElementById("histEmptyMsg").classList.add("hidden");
+
+        // 填充下拉框
+        const optionsHtml = a.numericCols.map((c, idx) => `<option value="${idx}">${escapeHtml(c.name)}</option>`).join("");
+        histSelect.innerHTML = optionsHtml;
+        xSelect.innerHTML = optionsHtml;
+        ySelect.innerHTML = optionsHtml;
+
+        // 直方图默认选中核心目标变量（如月消费金额）
+        const defaultHistIdx = a.targetCol ? a.numericCols.findIndex(c => c.colIdx === a.targetCol.colIdx) : 0;
+        histSelect.value = String(Math.max(0, defaultHistIdx));
+        renderHistogram(a.numericCols[Number(histSelect.value)]);
+
+        // 散点图：至少 2 个数值变量
+        if (a.numericCols.length < 2) {
+          document.getElementById("scatterChartWrap").classList.add("hidden");
+          document.getElementById("scatterEmptyMsg").classList.remove("hidden");
+          document.getElementById("scatterStatsBar").innerHTML = "";
+          return;
+        }
+
+        document.getElementById("scatterChartWrap").classList.remove("hidden");
+        document.getElementById("scatterEmptyMsg").classList.add("hidden");
+
+        // 默认自动选中相关性最强的变量对（若目标变量存在且相关强，优先把目标变量放在 Y 轴）
+        let bestXIdx = 0;
+        let bestYIdx = 1;
+        if (a.correlations.length > 0) {
+          const topPair = a.correlations[0];
+          const idxA = a.numericCols.findIndex(c => c.colIdx === topPair.colA.colIdx);
+          const idxB = a.numericCols.findIndex(c => c.colIdx === topPair.colB.colIdx);
+          if (a.targetCol && topPair.colA.colIdx === a.targetCol.colIdx) {
+            bestXIdx = idxB;
+            bestYIdx = idxA;
+          } else {
+            bestXIdx = idxA;
+            bestYIdx = idxB;
+          }
+        }
+        xSelect.value = String(bestXIdx);
+        ySelect.value = String(bestYIdx);
+        renderScatterPlot(a.numericCols[bestXIdx], a.numericCols[bestYIdx]);
+      }
+
+      /**
+       * 绘制单变量直方图 + 自定义 Canvas 均值竖向虚线插件
+       */
+      function renderHistogram(col) {
+        if (state.histChart) { state.histChart.destroy(); state.histChart = null; }
+        if (!col || typeof Chart === "undefined") return;
+
+        // 分布形态标签
+        const skewTag =
+          col.skewness >= 0.5 ? { text: "明显右偏（长尾）", cls: "bg-amber-50 text-amber-800 border-amber-200" } :
+          col.skewness <= -0.5 ? { text: "明显左偏", cls: "bg-amber-50 text-amber-800 border-amber-200" } :
+          { text: "近似对称分布", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" };
+
+        document.getElementById("histBadges").innerHTML = `
+          <span class="px-2 py-0.5 rounded-md border font-semibold ${skewTag.cls}">${skewTag.text}</span>
+          <span class="px-2 py-0.5 rounded-md bg-blue-50 text-[#1E3A8A] border border-blue-200 font-medium">均值: ${fmt(col.mean)}</span>
+          <span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-medium">中位数: ${fmt(col.median)}</span>
+          <span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-medium">偏度: ${fmt(col.skewness)}</span>
+        `;
+
+        const vals = col.values;
+        const n = vals.length;
+        const min = col.min;
+        const max = col.max;
+        let labels = [];
+        let counts = [];
+
+        if (min === max) {
+          labels = [fmt(min)];
+          counts = [n];
+        } else {
+          const binCount = Math.min(9, Math.max(6, Math.ceil(Math.log2(n) + 1)));
+          const width = (max - min) / binCount;
+          counts = new Array(binCount).fill(0);
+          labels = new Array(binCount);
+          const digits = width >= 25 ? 0 : width >= 1 ? 1 : 2;
+          for (let b = 0; b < binCount; b++) {
+            const s = min + b * width;
+            const e = b === binCount - 1 ? max : min + (b + 1) * width;
+            labels[b] = `${s.toFixed(digits)}~${e.toFixed(digits)}`;
+          }
+          for (const v of vals) {
+            let idx = Math.floor((v - min) / width);
+            if (idx >= binCount) idx = binCount - 1;
+            if (idx < 0) idx = 0;
+            counts[idx]++;
+          }
+        }
+
+        // 自定义 Chart.js 插件：在等宽直方图上精确绘制红色/深蓝均值竖向参考线
+        const meanLinePlugin = {
+          id: "meanLinePlugin",
+          afterDatasetsDraw(chart) {
+            if (max <= min) return;
+            const { ctx, chartArea, scales } = chart;
+            const xScale = scales.x;
+            const ratio = Math.max(0, Math.min(1, (col.mean - min) / (max - min)));
+            const xPos = xScale.left + ratio * (xScale.right - xScale.left);
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.setLineDash([5, 4]);
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = "#DC2626";
+            ctx.moveTo(xPos, chartArea.top + 4);
+            ctx.lineTo(xPos, chartArea.bottom);
+            ctx.stroke();
+
+            // 标签小胶囊
+            const labelText = `均值 ${fmt(col.mean, max - min > 50 ? 1 : 2)}`;
+            ctx.font = "600 11px Inter, sans-serif";
+            const textW = ctx.measureText(labelText).width;
+            const boxW = textW + 10;
+            const boxH = 19;
+            let boxX = xPos - boxW / 2;
+            if (boxX < chartArea.left) boxX = chartArea.left + 2;
+            if (boxX + boxW > chartArea.right) boxX = chartArea.right - boxW - 2;
+            const boxY = chartArea.top + 2;
+
+            ctx.setLineDash([]);
+            ctx.fillStyle = "#FEF2F2";
+            ctx.strokeStyle = "#FCA5A5";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.roundRect(boxX, boxY, boxW, boxH, 4);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = "#B91C1C";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(labelText, boxX + boxW / 2, boxY + boxH / 2 + 0.5);
+            ctx.restore();
+          }
+        };
+
+        const ctx = document.getElementById("histogramCanvas").getContext("2d");
+        state.histChart = new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels,
+            datasets: [{
+              label: `${col.name} 频数`,
+              data: counts,
+              backgroundColor: "rgba(37, 99, 235, 0.78)",
+              hoverBackgroundColor: "rgba(30, 58, 138, 0.92)",
+              borderColor: "#1D4ED8",
+              borderWidth: 1,
+              borderRadius: 4,
+              barPercentage: 0.95,
+              categoryPercentage: 0.96
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  title: items => `区间：${items[0].label}`,
+                  label: item => `频数：${item.parsed.y} 条（占 ${fmtPct(item.parsed.y / n)}）`
+                }
+              }
+            },
+            scales: {
+              x: {
+                grid: { display: false },
+                ticks: { color: "#475569", font: { size: 11 }, maxRotation: 25 }
+              },
+              y: {
+                beginAtZero: true,
+                ticks: { precision: 0, color: "#475569", font: { size: 11 } },
+                grid: { color: "#F1F5F9" },
+                title: { display: true, text: "频数", color: "#64748B", font: { size: 11 } }
+              }
+            }
+          },
+          plugins: [meanLinePlugin]
+        });
+      }
+
+      /**
+       * 绘制双变量散点图 + 最小二乘 OLS 线性拟合趋势线（异常点琥珀高亮）
+       */
+      function renderScatterPlot(colX, colY) {
+        if (state.scatterChart) { state.scatterChart.destroy(); state.scatterChart = null; }
+        if (!colX || !colY || typeof Chart === "undefined") return;
+
+        const reg = calcPairwiseRegression(state.rows, colX.colIdx, colY.colIdx);
+        const absR = Math.abs(reg.r);
+        const levelText = absR >= 0.7 ? "强相关" : absR >= 0.4 ? "中等相关" : "弱相关";
+        const levelCls = absR >= 0.7
+          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+          : absR >= 0.4
+          ? "bg-blue-50 text-[#1E3A8A] border-blue-200"
+          : "bg-slate-100 text-slate-600 border-slate-200";
+
+        const sign = reg.intercept >= 0 ? "+" : "-";
+        const eqStr = `y = ${fmt(reg.slope)}x ${sign} ${fmt(Math.abs(reg.intercept))}`;
+
+        document.getElementById("scatterStatsBar").innerHTML = `
+          <span class="px-2 py-0.5 rounded-md border font-semibold ${levelCls}">Pearson r = ${fmt(reg.r)} (${levelText})</span>
+          <span class="px-2 py-0.5 rounded-md bg-blue-50 text-[#1E3A8A] border border-blue-200 font-semibold">R² = ${fmt(reg.r2)}</span>
+          <span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-mono text-[11.5px]">${eqStr}</span>
+        `;
+
+        const normalPts = [];
+        const outlierPts = [];
+        const outSet = state.analytics.outlierCellSet;
+
+        for (let i = 0; i < reg.n; i++) {
+          const rIdx = reg.rowIndices[i];
+          const pt = { x: reg.xs[i], y: reg.ys[i], rowNum: rIdx + 1 };
+          if (outSet.has(`${rIdx}:${colX.colIdx}`) || outSet.has(`${rIdx}:${colY.colIdx}`)) {
+            outlierPts.push(pt);
+          } else {
+            normalPts.push(pt);
+          }
+        }
+
+        // OLS 趋势线端点
+        const minX = reg.xs.length > 0 ? Math.min(...reg.xs) : 0;
+        const maxX = reg.xs.length > 0 ? Math.max(...reg.xs) : 1;
+        const linePts = [
+          { x: minX, y: reg.slope * minX + reg.intercept },
+          { x: maxX, y: reg.slope * maxX + reg.intercept }
+        ];
+
+        const ctx = document.getElementById("scatterCanvas").getContext("2d");
+        state.scatterChart = new Chart(ctx, {
+          type: "scatter",
+          data: {
+            datasets: [
+              {
+                label: "常规样本",
+                data: normalPts,
+                backgroundColor: "rgba(37, 99, 235, 0.72)",
+                borderColor: "#1E40AF",
+                borderWidth: 1,
+                pointRadius: 4.5,
+                pointHoverRadius: 6.5
+              },
+              {
+                label: "IQR 异常样本",
+                data: outlierPts,
+                backgroundColor: "rgba(245, 158, 11, 0.9)",
+                borderColor: "#B45309",
+                borderWidth: 1.5,
+                pointRadius: 6,
+                pointHoverRadius: 8
+              },
+              {
+                type: "line",
+                label: `OLS 拟合线 (${eqStr})`,
+                data: linePts,
+                borderColor: "#DC2626",
+                borderWidth: 2,
+                borderDash: [6, 4],
+                pointRadius: 0,
+                fill: false,
+                tension: 0
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: "bottom",
+                labels: { boxWidth: 10, font: { size: 11 }, color: "#475569" }
+              },
+              tooltip: {
+                callbacks: {
+                  label: ctxItem => {
+                    if (ctxItem.dataset.type === "line") return `拟合预测：y = ${fmt(ctxItem.parsed.y)}`;
+                    const raw = ctxItem.raw;
+                    return `第 ${raw.rowNum} 行：(${fmt(raw.x, 2)}, ${fmt(raw.y, 2)})`;
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                title: { display: true, text: colX.name, color: "#475569", font: { size: 11, weight: "600" } },
+                grid: { color: "#F1F5F9" },
+                ticks: { color: "#475569", font: { size: 11 } }
+              },
+              y: {
+                title: { display: true, text: colY.name, color: "#475569", font: { size: 11, weight: "600" } },
+                grid: { color: "#F1F5F9" },
+                ticks: { color: "#475569", font: { size: 11 } }
+              }
+            }
+          }
+        });
+      }
+
+      /* ======================================================================
+         7. 一键智能清洗与前后状态对比
+         ====================================================================== */
+
+      function applySmartCleaning() {
+        const a = state.analytics;
+        if (!a || a.missingDetails.length === 0) {
+          showToast("当前数据已完整，无需执行缺失清洗。", "info");
+          return;
+        }
+
+        // 保存清洗前快照用于“清洗前 vs 清洗后”动态对比
+        if (!state.preCleanSnapshot) {
+          state.preCleanSnapshot = {
+            healthScore: a.health.overall,
+            completenessScore: a.health.completeness.score,
+            missingCount: a.totalMissing,
+            missingRate: a.missingRate
+          };
+        }
+
+        const actionsLog = [];
+        for (const m of a.missingDetails) {
+          const fillValStr = m.isNumeric
+            ? (Number.isInteger(m.fillValue) ? String(m.fillValue) : m.fillValue.toFixed(2))
+            : String(m.fillValue);
+
+          for (let r = 0; r < state.rows.length; r++) {
+            if (state.rows[r][m.colIdx] === "") {
+              state.rows[r][m.colIdx] = fillValStr;
+              state.imputedCells.add(`${r}:${m.colIdx}`);
+            }
+          }
+          actionsLog.push(`「${m.name}」使用${m.strategyLabel} (${fillValStr}) 补齐 ${m.count} 处`);
+        }
+
+        state.isCleaned = true;
+        refreshAllViews();
+
+        const newHealth = state.analytics.health.overall;
+        const diffBanner = document.getElementById("cleaningDiffBanner");
+        const diffText = document.getElementById("cleaningDiffText");
+        diffText.textContent =
+          `缺失值：${state.preCleanSnapshot.missingCount} 处 (${fmtPct(state.preCleanSnapshot.missingRate, 2)}) → 0 处 (0.00%) ｜ ` +
+          `数据健康分：${state.preCleanSnapshot.healthScore} 分 → ${newHealth} 分（+${Math.max(0, newHealth - state.preCleanSnapshot.healthScore)}分） ｜ ` +
+          `执行明细：${actionsLog.join("；")}`;
+        diffBanner.classList.remove("hidden");
+
+        showToast(`智能清洗完成！健康分由 ${state.preCleanSnapshot.healthScore} 提升至 ${newHealth} 分。`, "success", 4200);
+      }
+
+      function restoreBeforeCleaning() {
+        if (!state.rawRows || state.rawRows.length === 0) return;
+        state.rows = state.rawRows.map(r => [...r]);
+        state.imputedCells.clear();
+        state.isCleaned = false;
+        state.preCleanSnapshot = null;
+        document.getElementById("cleaningDiffBanner").classList.add("hidden");
+        refreshAllViews();
+        showToast("已恢复至清洗前原始数据状态。", "info");
+      }
+
+      /* ======================================================================
+         8. 交互式 AI 数据问答双引擎（内置统计推理引擎 + 可选大模型 API 降级）
+         ====================================================================== */
+
+      /**
+       * 将简易 Markdown 文本渲染为安全的聊天消息 HTML
+       */
+      function renderSimpleMarkdown(md) {
+        let html = escapeHtml(md);
+        // 粗体
+        html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+        // 行内代码
+        html = html.replace(/`([^`]+)`/g, '<code class="px-1 py-0.5 rounded bg-slate-200/70 text-[#1E3A8A] text-[11px] font-mono">$1</code>');
+
+        const lines = html.split("\n");
+        let out = "";
+        let inUl = false;
+        let inOl = false;
+
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (line === "") {
+            if (inUl) { out += "</ul>"; inUl = false; }
+            if (inOl) { out += "</ol>"; inOl = false; }
+            continue;
+          }
+          if (/^[-•*]\s+/.test(line)) {
+            if (inOl) { out += "</ol>"; inOl = false; }
+            if (!inUl) { out += "<ul>"; inUl = true; }
+            out += `<li>${line.replace(/^[-•*]\s+/, "")}</li>`;
+          } else if (/^\d+\.\s+/.test(line)) {
+            if (inUl) { out += "</ul>"; inUl = false; }
+            if (!inOl) { out += "<ol>"; inOl = true; }
+            out += `<li>${line.replace(/^\d+\.\s+/, "")}</li>`;
+          } else {
+            if (inUl) { out += "</ul>"; inUl = false; }
+            if (inOl) { out += "</ol>"; inOl = false; }
+            out += `<p>${line}</p>`;
+          }
+        }
+        if (inUl) out += "</ul>";
+        if (inOl) out += "</ol>";
+        return out;
+      }
+
+      /**
+       * 内置智能统计推理引擎：结合当前数据集实时指标生成精准、带数字支撑的结构化回答
+       */
+      function runBuiltInQAEngine(question) {
+        const a = state.analytics;
+        if (!a) return "当前工作台尚未加载数据，请先上传 CSV 文件或一键加载示例数据集。";
+
+        const q = question.trim();
+        const target = a.targetCol;
+        const outlierCols = a.numericCols.filter(c => c.outliers.length > 0);
+        const topPair = a.correlations[0];
+
+        // 1) 询问影响核心消费/目标变量的关键指标
+        if (/影响|驱动|相关|因素|杠杆|目标/.test(q)) {
+          if (!target || a.targetDrivers.length === 0) {
+            return "当前数据集中数值型变量少于 2 个，暂无法通过 Pearson 相关系数测算核心驱动因子。";
+          }
+          const top3 = a.targetDrivers.slice(0, 3);
+          const lines = top3.map((d, i) =>
+            `${i + 1}. **${d.driver.name}**：Pearson r = **${fmt(d.r)}**（R² = ${fmtPct(d.r2)}，${d.level}${d.direction}）`
+          ).join("\n");
+          const best = top3[0];
+          const bestReg = calcPairwiseRegression(state.rows, best.driver.colIdx, target.colIdx);
+          return `基于对当前 ${a.rowCount} 条样本的实时相关性扫描，影响核心指标 **「${target.name}」** 的前三大驱动因子如下：\n${lines}\n\n**量化解读**：其中 **「${best.driver.name}」** 解释力最强，线性拟合斜率为 \`${fmt(bestReg.slope)}\`（即「${best.driver.name}」每提升 1 个单位，「${target.name}」平均变化约 **${fmt(bestReg.slope)}**）。建议优先围绕前两大指标制定增长举措。`;
+        }
+
+        // 2) 询问异常值该删还是留
+        if (/异常|离群|极值|删|留|iqr/i.test(q)) {
+          if (outlierCols.length === 0) {
+            return `经 Tukey 1.5×IQR 规则全表扫描，当前数据集 **未检出任何异常离群值**（稳健性得分 ${a.health.robustness.score} 分），无需删除或截断处理。`;
+          }
+          const details = outlierCols.map(c =>
+            `- **${c.name}**：正常范围 [${fmt(c.lowerBound)}, ${fmt(c.upperBound)}]，检出 **${c.outliers.length}** 处异常（${c.outliers.slice(0, 3).map(o => `第${o.rowNum}行=${fmt(o.val, Number.isInteger(o.val) ? 0 : 2)}`).join("、")}）`
+          ).join("\n");
+          return `当前共检出 **${a.totalOutliers} 处** IQR 异常值：\n${details}\n\n**处理建议（不建议一刀切删除）**：\n1. **业务核实优先**：若属高客单/高月消费的真实超级 VIP 或企业大单，**应当保留**并纳入高价值客户分层运营；仅在确认属于采集错误（如负数年龄、重复录入）时才予以剔除。\n2. **统计建模兼容**：直接保留极值会拉高均值与 OLS 回归斜率，建议对外汇报时**以中位数替代均值**（如 ${target ? `「${target.name}」中位数 ${fmt(target.median)} vs 均值 ${fmt(target.mean)}` : "稳健中心指标"}），建模时采用 **Winsorize 缩尾处理** 或 **对数变换**。`;
+        }
+
+        // 3) 生成可直接放进汇报 PPT 的总结
+        if (/ppt|汇报|总结|摘要|一页纸|提炼/i.test(q)) {
+          const topD = a.targetDrivers[0];
+          const pareto = target && target.top20Share ? target.top20Share : null;
+          return `以下为您生成可直接粘贴至汇报 PPT 的 **3 段式高层摘要**：\n\n**【页面标题】${state.fileName.replace(/\.csv$/i, "")} 核心数据洞察（N=${a.rowCount}）**\n- **数据体检与现状**：样本综合健康分 **${a.health.overall}/100**（${a.health.grade.label}），${a.totalMissing > 0 ? `识别 ${a.totalMissing} 处缺失与 ${a.totalOutliers} 处极值待治理` : `完整度 100%，定位 ${a.totalOutliers} 处高值离群特征`}；${target ? `核心指标「${target.name}」均值 **${fmt(target.mean)}**（中位数 ${fmt(target.median)}）。` : ""}\n- **核心增长归因**：${topD ? `**「${topD.driver.name}」** 与「${target.name}」呈${topD.level}${topD.direction}（**r = ${fmt(topD.r)}**，解释力 ${fmtPct(topD.r2)}），是现阶段最关键的业绩撬动杠杆。` : "各维度保持稳定运行。"}\n- **结构亮点与抓手**：${pareto ? `Top 20% 头部群体贡献了 **${fmtPct(pareto.share)}** 的「${target.name}」总量，建议立即推行“核心杠杆提效 + 头部 VIP 锁客 + 腰部促活”三步走策略。` : "建议结合细分群体差异推进精细化分层运营。"}`;
+        }
+
+        // 4) 给出 3 条针对性业务优化建议
+        if (/建议|优化|策略|提升|怎么|行动/.test(q)) {
+          const acts = state.latestInsights ? state.latestInsights.actions : [];
+          if (acts.length > 0) {
+            return `结合当前数据集的统计诊断结果，为您定制以下 **3 条可落地业务优化建议**：\n` +
+              acts.map((act, i) => `${i + 1}. **[${act.priority}] ${act.title}**：${act.desc}`).join("\n");
+          }
+        }
+
+        // 5) 询问缺失值或数据清洗
+        if (/缺失|空值|清洗|填补|完整/.test(q)) {
+          if (a.totalMissing === 0) {
+            return `当前数据集完整性为 **100%**（缺失数 = 0）。${state.isCleaned ? "系统已完成智能清洗，所有缺失记录已按偏态最优策略完成填补。" : "原始文件不存在空白缺失记录。"}`;
+          }
+          return `当前共检测到 **${a.totalMissing} 处**缺失值（占比 ${fmtPct(a.missingRate, 2)}）：\n` +
+            a.missingDetails.map(m => `- **${m.name}**：缺 ${m.count} 条 → 建议 **${m.strategyLabel}**（${m.reason}）`).join("\n") +
+            `\n\n您可以直接点击上方诊断中心的 **「采纳建议：一键智能清洗」** 按钮完成自动修复。`;
+        }
+
+        // 6) 询问分类分组差异（城市、性别等）
+        if (/城市|性别|分类|分组|人群|差异|对比/.test(q) && a.groupBreakdowns.length > 0) {
+          const lines = a.groupBreakdowns.map(g => {
+            const detail = g.groups.map(item => `${item.name}(均值 ${fmt(item.mean)}, n=${item.count})`).join(" > ");
+            return `- 按 **${g.catName}** 拆解「${g.targetName}」：${detail}`;
+          }).join("\n");
+          return `基于分类维度对核心指标 **「${target.name}」** 的分组交叉统计如下：\n${lines}\n\n**结论**：不同细分群体均值梯度清晰，建议在投放预算与产品定价上采用差异化策略，重点复制高产出分层的运营打法。`;
+        }
+
+        // 7) 询问具体某个字段的统计情况
+        const matchedCol = a.numericCols.find(c => q.includes(c.name) || q.includes(c.name.replace(/\(.*?\)/g, "")));
+        if (matchedCol) {
+          return `关于变量 **「${matchedCol.name}」** 的实时统计档案（有效 N = ${matchedCol.n}，缺失 = ${matchedCol.missing}）：\n- **集中趋势**：均值 **${fmt(matchedCol.mean)}**，中位数 **${fmt(matchedCol.median)}**\n- **离散程度**：标准差 ${fmt(matchedCol.sd)}，取值范围 [${fmt(matchedCol.min)}, ${fmt(matchedCol.max)}]，变异系数 CV = **${fmtPct(matchedCol.cv)}**\n- **分布形态**：偏度 G1 = **${fmt(matchedCol.skewness)}**（${Math.abs(matchedCol.skewness) >= 0.5 ? (matchedCol.skewness > 0 ? "明显右偏" : "明显左偏") : "近似对称"}），IQR 异常值 **${matchedCol.outliers.length}** 处。`;
+        }
+
+        // 8) 通用高质量综合答复
+        return `已为您检索当前数据集 **「${state.fileName}」**（${a.rowCount} 行 × ${a.colCount} 列，健康度 **${a.health.overall} 分**）：\n- **质量概况**：缺失值 ${a.totalMissing} 处，IQR 异常值 ${a.totalOutliers} 处。\n- **核心发现**：${topPair ? `最强关联组合为「${topPair.colA.name}」与「${topPair.colB.name}」（r = ${fmt(topPair.r)}，${topPair.level}）。` : "包含单变量统计档案。"}${target && target.top20Share ? `核心指标「${target.name}」Top 20% 头部贡献占比达 **${fmtPct(target.top20Share.share)}**。` : ""}\n\n您可以进一步询问具体字段名（如“${a.numericCols[0]?.name || "年龄"}”）、分群对比、异常值处置或点击上方快捷胶囊提问。`;
+      }
+
+      /**
+       * 生成发送给外部大模型的精简统计摘要 JSON（避免传输原始隐私明细）
+       */
+      function buildCompactStatsJSON(a) {
+        return JSON.stringify({
+          dataset: state.fileName,
+          rows: a.rowCount,
+          cols: a.colCount,
+          cleaned: state.isCleaned,
+          healthScore: a.health.overall,
+          missingSummary: a.missingDetails.map(m => ({ col: m.name, count: m.count, suggested: m.strategyLabel })),
+          numericStats: a.numericCols.map(c => ({
+            name: c.name, n: c.n, mean: Number(fmt(c.mean)), sd: Number(fmt(c.sd)),
+            median: Number(fmt(c.median)), min: c.min, max: c.max,
+            skew: Number(fmt(c.skewness)), cv: Number(fmt(c.cv)), outliers: c.outliers.length
+          })),
+          topCorrelations: a.correlations.slice(0, 6).map(p => ({
+            pair: `${p.colA.name} vs ${p.colB.name}`, r: Number(fmt(p.r)), r2: Number(fmt(p.r2))
+          })),
+          groupBreakdowns: a.groupBreakdowns.slice(0, 2)
+        });
+      }
+
+      /**
+       * 调用可选外部 OpenAI / DeepSeek 兼容接口（失败时自动降级为内置推理引擎）
+       */
+      async function askAI(question) {
+        const { baseUrl, model, apiKey } = state.apiConfig;
+        const isApiConfigured = Boolean(baseUrl && model && apiKey);
+
+        if (!isApiConfigured) {
+          // 轻微延迟营造流畅对话反馈
+          await new Promise(r => setTimeout(r, 220));
+          return { answer: runBuiltInQAEngine(question), source: "builtin" };
+        }
+
+        try {
+          const endpoint = baseUrl.replace(/\/+$/, "") + "/chat/completions";
+          const statsJson = buildCompactStatsJSON(state.analytics);
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+              model: model,
+              temperature: 0.3,
+              messages: [
+                {
+                  role: "system",
+                  content: "你是 StatAI 高级商业数据分析师与统计专家。请严格依据提供的 JSON 统计摘要用中文给出专业、简洁、带具体数字支撑的结构化回答，不要编造数据中不存在的指标。"
+                },
+                {
+                  role: "user",
+                  content: `当前数据集统计摘要 JSON：\n${statsJson}\n\n用户问题：${question}`
+                }
+              ]
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status} ${response.statusText}`);
+          }
+          const data = await response.json();
+          const content = data?.choices?.[0]?.message?.content;
+          if (!content) throw new Error("接口返回内容为空");
+          return { answer: content, source: "llm", model };
+        } catch (err) {
+          showToast(`自定义大模型请求失败（${err.message}），已自动降级为内置推理引擎。`, "warning", 4500);
+          return {
+            answer: `> *提示：外部 API 请求失败（${err.message}），已自动降级为内置统计推理引擎作答。*\n\n` + runBuiltInQAEngine(question),
+            source: "fallback"
+          };
+        }
+      }
+
+      function appendChatMessage(role, content, metaLabel = "") {
+        const box = document.getElementById("chatMessages");
+        const wrapper = document.createElement("div");
+        wrapper.className = role === "user" ? "flex justify-end" : "flex justify-start";
+
+        if (role === "user") {
+          wrapper.innerHTML = `
+            <div class="max-w-[85%] rounded-2xl rounded-tr-sm px-3.5 py-2.5 bg-[#2563EB] text-white text-xs sm:text-[13px] leading-relaxed shadow-xs">
+              ${escapeHtml(content)}
+            </div>
+          `;
+        } else {
+          wrapper.innerHTML = `
+            <div class="max-w-[94%] rounded-2xl rounded-tl-sm px-3.5 py-3 bg-slate-50 border border-slate-200 text-slate-700 text-xs sm:text-[13px] leading-relaxed chat-prose">
+              ${metaLabel ? `<div class="text-[10.5px] font-semibold text-[#1E3A8A] mb-1">${escapeHtml(metaLabel)}</div>` : ""}
+              ${renderSimpleMarkdown(content)}
+            </div>
+          `;
+        }
+        box.appendChild(wrapper);
+        box.scrollTop = box.scrollHeight;
+        return wrapper;
+      }
+
+      function resetChatWelcome() {
+        const box = document.getElementById("chatMessages");
+        box.innerHTML = "";
+        const a = state.analytics;
+        if (!a) return;
+        const welcome = `你好！我已完成对 **「${state.fileName}」**（${a.rowCount} 行 × ${a.colCount} 列）的全量统计体检。\n- 当前数据健康度：**${a.health.overall} 分**（${a.health.grade.label}）\n- 已定位：**${a.totalMissing}** 处缺失值、**${a.totalOutliers}** 处 IQR 异常值、**${a.correlations.filter(p => p.absR >= 0.7).length}** 组强相关变量对。\n\n你可以点击下方快捷胶囊，或直接向我提问任何分析问题。`;
+        appendChatMessage("assistant", welcome, "StatAI 智能助手");
+      }
+
+      async function handleSendQuestion(questionText) {
+        const q = questionText.trim();
+        if (!q || !state.analytics) return;
+
+        const input = document.getElementById("chatInput");
+        const sendBtn = document.getElementById("chatSendBtn");
+        input.value = "";
+        sendBtn.disabled = true;
+
+        appendChatMessage("user", q);
+        const loadingBubble = appendChatMessage("assistant", "正在结合当前数据集统计特征深度推理中...", "StatAI 正在思考");
+
+        const result = await askAI(q);
+        loadingBubble.remove();
+
+        const label = result.source === "llm"
+          ? `自定义大模型 (${result.model})`
+          : "内置智能统计推理引擎";
+        appendChatMessage("assistant", result.answer, label);
+        sendBtn.disabled = false;
+      }
+
+      /* ======================================================================
+         9. Markdown 诊断报告导出
+         ====================================================================== */
+
+      function exportMarkdownReport() {
+        const a = state.analytics;
+        if (!a) {
+          showToast("暂无可导出的分析数据。", "warning");
+          return;
+        }
+        const now = new Date();
+        const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+        const fileDate = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+
+        const statsMdRows = a.numericCols.map(c =>
+          `| ${c.name} | ${c.n} | ${c.missing} | ${fmt(c.mean)} | ${fmt(c.sd)} | ${fmt(c.median)} | ${fmt(c.min)} | ${fmt(c.max)} | ${fmt(c.skewness)} | ${fmtPct(c.cv)} | ${c.outliers.length} |`
+        ).join("\n");
+
+        const corrMdRows = a.correlations.slice(0, 8).map(p =>
+          `| ${p.colA.name} × ${p.colB.name} | ${fmt(p.r)} | ${fmt(p.r2)} | ${p.level}${p.direction} |`
+        ).join("\n");
+
+        const outlierLines = a.numericCols
+          .filter(c => c.outliers.length > 0)
+          .map(c => `- **${c.name}**：正常范围 [${fmt(c.lowerBound)}, ${fmt(c.upperBound)}]，检出 ${c.outliers.length} 处异常（${c.outliers.map(o => `第${o.rowNum}行=${fmt(o.val)}`).join("、")}）`)
+          .join("\n") || "- 未检出 1.5×IQR 离群极值。";
+
+        const missingLines = a.missingDetails.length > 0
+          ? a.missingDetails.map(m => `- **${m.name}**：缺失 ${m.count} 条（${fmtPct(m.rate)}），建议采用 ${m.strategyLabel}（${m.reason}）`).join("\n")
+          : `- 数据完整度 100%，无缺失值${state.isCleaned ? "（已执行 AI 智能清洗）" : ""}。`;
+
+        const md = [
+          `# StatAI 智能统计与数据洞察诊断报告`,
+          ``,
+          `- **数据集名称**：${state.fileName}`,
+          `- **生成时间**：${dateStr}`,
+          `- **数据规模**：${a.rowCount} 行 × ${a.colCount} 列（数值型 ${a.numericCols.length} 列 / 分类型 ${a.categoricalCols.length} 列）`,
+          `- **清洗状态**：${state.isCleaned ? "已执行一键智能清洗" : "原始未清洗状态"}`,
+          ``,
+          `## 一、数据健康度综合评估`,
+          ``,
+          `**综合健康分：${a.health.overall} / 100（${a.health.grade.label}）**`,
+          ``,
+          `| 评估维度 | 得分 | 实时诊断说明 |`,
+          `| :--- | :---: | :--- |`,
+          `| 完整性 | ${a.health.completeness.score} | ${a.health.completeness.desc} |`,
+          `| 稳健性 | ${a.health.robustness.score} | ${a.health.robustness.desc} |`,
+          `| 分布均衡度 | ${a.health.balance.score} | ${a.health.balance.desc} |`,
+          `| 信息关联度 | ${a.health.correlation.score} | ${a.health.correlation.desc} |`,
+          ``,
+          `## 二、核心诊断问题清单`,
+          ``,
+          `### 1. 缺失值诊断`,
+          missingLines,
+          ``,
+          `### 2. 异常值扫描（Tukey 1.5×IQR）`,
+          outlierLines,
+          ``,
+          `### 3. 核心变量相关性 Top 榜`,
+          a.correlations.length > 0
+            ? `| 变量组合 | Pearson r | R² | 关联强度 |\n| :--- | :---: | :---: | :---: |\n${corrMdRows}`
+            : `暂无足够数值变量计算相关性。`,
+          ``,
+          `## 三、描述性统计三线表摘要`,
+          ``,
+          a.numericCols.length > 0
+            ? `| 变量名 | 有效 N | 缺失数 | 均值 | 标准差 | 中位数 | 最小值 | 最大值 | 偏度 | 变异系数 CV | 异常值数 |\n| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n${statsMdRows}`
+            : `未检测到数值型变量。`,
+          ``,
+          `## 四、AI 双视角深度洞察`,
+          ``,
+          `### 商业决策视角`,
+          state.latestInsights ? state.latestInsights.businessPlain : "",
+          ``,
+          `### 学术统计视角`,
+          state.latestInsights ? state.latestInsights.academicPlain : "",
+          ``,
+          `---`,
+          `*本报告由 StatAI 轻量统计与数据洞察工作台（v2.0 AI 智能诊断版）纯前端自动生成*`
+        ].join("\n");
+
+        const blob = new Blob([md], { type: "text/markdown;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `StatAI_诊断报告_${fileDate}.md`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showToast("Markdown 诊断报告已生成并开始下载。", "success");
+      }
+
+      /* ======================================================================
+         10. 全局刷新与数据加载入口
+         ====================================================================== */
+
+      function refreshAllViews() {
+        state.analytics = runFullAnalytics(state.headers, state.rows);
+        const a = state.analytics;
+
+        document.getElementById("emptyState").classList.add("hidden");
+        document.getElementById("workspaceContent").classList.remove("hidden");
+        document.getElementById("exportMdBtn").disabled = false;
+
+        document.getElementById("datasetMetaBadge").textContent =
+          `${state.fileName} · ${a.rowCount}行 × ${a.colCount}列（数值 ${a.numericCols.length} / 分类 ${a.categoricalCols.length}）`;
+
+        const cleanedBadge = document.getElementById("cleanedStatusBadge");
+        const restoreBtn = document.getElementById("restoreRawBtn");
+        if (state.isCleaned) {
+          cleanedBadge.classList.remove("hidden");
+          restoreBtn.classList.remove("hidden");
+        } else {
+          cleanedBadge.classList.add("hidden");
+          restoreBtn.classList.add("hidden");
+        }
+
+        renderHealthDashboard(a);
+        renderDiagnosticList(a);
+        renderInsights(a);
+        initAndRenderCharts(a);
+        renderDescriptiveTable(a);
+        renderPreviewTable(a);
+      }
+
+      function loadCSVData(csvText, fileName, silent = false) {
+        try {
+          const parsed = parseCSVText(csvText);
+          state.fileName = fileName;
+          state.headers = parsed.headers;
+          state.rawRows = parsed.rows.map(r => [...r]);
+          state.rows = parsed.rows.map(r => [...r]);
+          state.imputedCells.clear();
+          state.isCleaned = false;
+          state.preCleanSnapshot = null;
+          state.previewFilter = "all";
+          document.getElementById("cleaningDiffBanner").classList.add("hidden");
+          updateFilterButtonUI();
+
+          refreshAllViews();
+          resetChatWelcome();
+
+          if (!silent) {
+            showToast(`已成功加载「${fileName}」（${parsed.rows.length} 行 × ${parsed.headers.length} 列）。`, "success");
+          }
+        } catch (err) {
+          showToast("CSV 解析错误：" + err.message, "error");
+        }
+      }
+
+      function clearAllData() {
+        destroyCharts();
+        state.fileName = "";
+        state.headers = [];
+        state.rawRows = [];
+        state.rows = [];
+        state.imputedCells.clear();
+        state.isCleaned = false;
+        state.preCleanSnapshot = null;
+        state.analytics = null;
+
+        document.getElementById("csvFileInput").value = "";
+        document.getElementById("workspaceContent").classList.add("hidden");
+        document.getElementById("emptyState").classList.remove("hidden");
+        document.getElementById("exportMdBtn").disabled = true;
+        document.getElementById("cleanedStatusBadge").classList.add("hidden");
+        document.getElementById("restoreRawBtn").classList.add("hidden");
+        document.getElementById("cleaningDiffBanner").classList.add("hidden");
+        document.getElementById("datasetMetaBadge").textContent = "等待加载数据...";
+        showToast("已清空当前工作台数据。", "info");
+      }
+
+      function updateFilterButtonUI() {
+        document.querySelectorAll(".preview-filter-btn").forEach(btn => {
+          const active = btn.dataset.filter === state.previewFilter;
+          btn.className = active
+            ? "preview-filter-btn px-2.5 py-1 rounded-md font-semibold bg-white text-[#1E3A8A] shadow-sm"
+            : "preview-filter-btn px-2.5 py-1 rounded-md font-medium text-slate-600 hover:text-slate-900";
+        });
+      }
+
+      /* ======================================================================
+         11. 大模型 API 配置弹窗与本地存储同步
+         ====================================================================== */
+
+      function loadApiConfigFromStorage() {
+        try {
+          const raw = localStorage.getItem(API_STORAGE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            state.apiConfig = {
+              baseUrl: parsed.baseUrl || "",
+              model: parsed.model || "",
+              apiKey: parsed.apiKey || ""
+            };
+          }
+        } catch (_) {}
+        syncApiStatusUI();
+      }
+
+      function syncApiStatusUI() {
+        const { baseUrl, model, apiKey } = state.apiConfig;
+        const enabled = Boolean(baseUrl && model && apiKey);
+        const dot = document.getElementById("apiStatusDot");
+        const badge = document.getElementById("qaEngineBadge");
+
+        if (enabled) {
+          dot.className = "w-2 h-2 rounded-full bg-emerald-500";
+          badge.className = "inline-flex items-center gap-1.5 mt-1 text-[11px] font-medium text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full";
+          badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-blue-600"></span>已接入大模型 API（${escapeHtml(model)}）`;
+        } else {
+          dot.className = "w-2 h-2 rounded-full bg-slate-300";
+          badge.className = "inline-flex items-center gap-1.5 mt-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full";
+          badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>内置智能统计推理引擎（离线可用）`;
+        }
+      }
+
+      function openApiModal() {
+        document.getElementById("apiBaseUrl").value = state.apiConfig.baseUrl || "https://api.deepseek.com/v1";
+        document.getElementById("apiModelName").value = state.apiConfig.model || "deepseek-chat";
+        document.getElementById("apiKeyInput").value = state.apiConfig.apiKey || "";
+        document.getElementById("apiModal").classList.remove("hidden");
+      }
+
+      function closeApiModal() {
+        document.getElementById("apiModal").classList.add("hidden");
+      }
+
+      /* ======================================================================
+         12. DOM 事件绑定与页面启动初始化
+         ====================================================================== */
+
+      function bindEvents() {
+        // 数据导入与示例按钮
+        document.getElementById("loadSampleBtn").addEventListener("click", () => {
+          loadCSVData(SAMPLE_CSV, "电商用户消费示例数据_50条.csv");
+        });
+        document.getElementById("emptyLoadSampleBtn").addEventListener("click", () => {
+          loadCSVData(SAMPLE_CSV, "电商用户消费示例数据_50条.csv");
+        });
+        document.getElementById("selectFileBtn").addEventListener("click", () => {
+          document.getElementById("csvFileInput").click();
+        });
+        document.getElementById("clearDataBtn").addEventListener("click", clearAllData);
+        document.getElementById("restoreRawBtn").addEventListener("click", restoreBeforeCleaning);
+        document.getElementById("bannerRestoreBtn").addEventListener("click", restoreBeforeCleaning);
+
+        // 文件拖拽上传
+        const dropzone = document.getElementById("dropzone");
+        const fileInput = document.getElementById("csvFileInput");
+        dropzone.addEventListener("click", () => fileInput.click());
+        dropzone.addEventListener("keydown", e => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); }
+        });
+        fileInput.addEventListener("change", e => {
+          if (e.target.files && e.target.files[0]) readLocalCSVFile(e.target.files[0]);
+        });
+        dropzone.addEventListener("dragover", e => {
+          e.preventDefault();
+          dropzone.classList.add("border-blue-500", "bg-blue-50");
+        });
+        dropzone.addEventListener("dragleave", e => {
+          e.preventDefault();
+          dropzone.classList.remove("border-blue-500", "bg-blue-50");
+        });
+        dropzone.addEventListener("drop", e => {
+          e.preventDefault();
+          dropzone.classList.remove("border-blue-500", "bg-blue-50");
+          if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            readLocalCSVFile(e.dataTransfer.files[0]);
+          }
+        });
+
+        // 双视角 Tab 切换
+        const tabBusiness = document.getElementById("tabBusiness");
+        const tabAcademic = document.getElementById("tabAcademic");
+        const businessPanel = document.getElementById("businessInsightPanel");
+        const academicPanel = document.getElementById("academicInsightPanel");
+
+        tabBusiness.addEventListener("click", () => {
+          state.activeInsightTab = "business";
+          tabBusiness.className = "px-3.5 py-1.5 rounded-md text-xs sm:text-sm font-semibold transition bg-white text-[#1E3A8A] shadow-sm";
+          tabAcademic.className = "px-3.5 py-1.5 rounded-md text-xs sm:text-sm font-medium transition text-slate-600 hover:text-slate-900";
+          businessPanel.classList.remove("hidden");
+          academicPanel.classList.add("hidden");
+        });
+
+        tabAcademic.addEventListener("click", () => {
+          state.activeInsightTab = "academic";
+          tabAcademic.className = "px-3.5 py-1.5 rounded-md text-xs sm:text-sm font-semibold transition bg-white text-[#1E3A8A] shadow-sm";
+          tabBusiness.className = "px-3.5 py-1.5 rounded-md text-xs sm:text-sm font-medium transition text-slate-600 hover:text-slate-900";
+          academicPanel.classList.remove("hidden");
+          businessPanel.classList.add("hidden");
+        });
+
+        // 一键复制洞察文本
+        document.getElementById("copyInsightBtn").addEventListener("click", () => {
+          if (!state.latestInsights) return;
+          const text = state.activeInsightTab === "business"
+            ? state.latestInsights.businessPlain
+            : state.latestInsights.academicPlain;
+          if (copyToClipboard(text)) {
+            showToast(`已复制「${state.activeInsightTab === "business" ? "商业决策洞察" : "学术统计解读"}」全文至剪贴板。`, "success");
+          } else {
+            showToast("复制失败，请手动选中复制。", "error");
+          }
+        });
+
+        // 交互式问答表单与快捷胶囊
+        document.getElementById("chatForm").addEventListener("submit", e => {
+          e.preventDefault();
+          const val = document.getElementById("chatInput").value;
+          handleSendQuestion(val);
+        });
+        document.querySelectorAll(".quick-q-btn").forEach(btn => {
+          btn.addEventListener("click", () => handleSendQuestion(btn.dataset.q));
+        });
+        document.getElementById("clearChatBtn").addEventListener("click", () => {
+          resetChatWelcome();
+          showToast("对话记录已重置。", "info");
+        });
+
+        // 图表下拉切换
+        document.getElementById("histVarSelect").addEventListener("change", e => {
+          if (!state.analytics) return;
+          renderHistogram(state.analytics.numericCols[Number(e.target.value)]);
+        });
+        const updateScatter = () => {
+          if (!state.analytics) return;
+          const xIdx = Number(document.getElementById("scatterXSelect").value);
+          const yIdx = Number(document.getElementById("scatterYSelect").value);
+          renderScatterPlot(state.analytics.numericCols[xIdx], state.analytics.numericCols[yIdx]);
+        };
+        document.getElementById("scatterXSelect").addEventListener("change", updateScatter);
+        document.getElementById("scatterYSelect").addEventListener("change", updateScatter);
+
+        // 预览表格筛选与折叠
+        document.querySelectorAll(".preview-filter-btn").forEach(btn => {
+          btn.addEventListener("click", () => {
+            state.previewFilter = btn.dataset.filter;
+            updateFilterButtonUI();
+            if (state.analytics) renderPreviewTable(state.analytics);
+          });
+        });
+
+        document.getElementById("togglePreviewBtn").addEventListener("click", () => {
+          state.previewCollapsed = !state.previewCollapsed;
+          const wrap = document.getElementById("previewTableWrapper");
+          const label = document.getElementById("togglePreviewLabel");
+          const icon = document.getElementById("togglePreviewIcon");
+          if (state.previewCollapsed) {
+            wrap.classList.add("hidden");
+            label.textContent = "展开表格";
+            icon.style.transform = "rotate(180deg)";
+          } else {
+            wrap.classList.remove("hidden");
+            label.textContent = "收起表格";
+            icon.style.transform = "rotate(0deg)";
+          }
+        });
+
+        // Markdown 导出与 API 配置弹窗
+        document.getElementById("exportMdBtn").addEventListener("click", exportMarkdownReport);
+        document.getElementById("openApiModalBtn").addEventListener("click", openApiModal);
+        document.getElementById("closeApiModalBtn").addEventListener("click", closeApiModal);
+        document.getElementById("cancelApiModalBtn").addEventListener("click", closeApiModal);
+
+        document.getElementById("saveApiConfigBtn").addEventListener("click", () => {
+          const baseUrl = document.getElementById("apiBaseUrl").value.trim();
+          const model = document.getElementById("apiModelName").value.trim();
+          const apiKey = document.getElementById("apiKeyInput").value.trim();
+          if (!baseUrl || !model || !apiKey) {
+            showToast("请完整填写 Base URL、模型名称与 API Key。", "warning");
+            return;
+          }
+          state.apiConfig = { baseUrl, model, apiKey };
+          try { localStorage.setItem(API_STORAGE_KEY, JSON.stringify(state.apiConfig)); } catch (_) {}
+          syncApiStatusUI();
+          closeApiModal();
+          showToast(`已启用外部大模型 API（${model}）。`, "success");
+        });
+
+        document.getElementById("clearApiConfigBtn").addEventListener("click", () => {
+          state.apiConfig = { baseUrl: "", model: "", apiKey: "" };
+          try { localStorage.removeItem(API_STORAGE_KEY); } catch (_) {}
+          syncApiStatusUI();
+          closeApiModal();
+          showToast("已清除外部 API 配置，恢复内置离线统计推理引擎。", "info");
+        });
+
+        // 点击遮罩关闭弹窗
+        document.getElementById("apiModal").addEventListener("click", e => {
+          if (e.target.id === "apiModal") closeApiModal();
+        });
+      }
+
+      // 页面加载完成：初始化配置、绑定事件并默认预加载 50 条电商示例数据
+      window.addEventListener("DOMContentLoaded", () => {
+        loadApiConfigFromStorage();
+        bindEvents();
+        loadCSVData(SAMPLE_CSV, "电商用户消费示例数据_50条.csv", true);
+      });
+    })();
+  </script>
+</body>
+</html>
